@@ -1,11 +1,10 @@
-name: lokey-dns-lab
+
 
 services:
   root:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
     entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
     command: []
-    name: root-server
     environment:
       ZONE_FILE: db.root
     volumes:
@@ -31,7 +30,6 @@ services:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
     entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
     command: []
-    name: tld-server
     environment:
       ZONE_FILE: db.test
     volumes:
@@ -55,7 +53,6 @@ services:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
     entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
     command: []
-    name: provider-server
     environment:
       ZONE_FILE: db.victim.test
     volumes:
@@ -77,7 +74,6 @@ services:
   attacker:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
     command: ["-g", "-c", "/etc/bind/named.conf"]
-    name: attacker-server
     volumes:
       - ./attacker/named.conf:/etc/bind/named.conf:ro
       - ./attacker/db.victim.test:/etc/bind/zones/db.victim.test:ro
@@ -89,7 +85,6 @@ services:
   dnssec-setup:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
     entrypoint: ["/bin/sh", "/opt/lab/bootstrap-dnssec.sh"]
-    name: dnssec-setup-server
     command: []
     depends_on:
       root:
@@ -110,7 +105,6 @@ services:
 
   unbound:
     image: mvance/unbound:1.22.0@sha256:76906da36d1806f3387338f15dcf8b357c51ce6897fb6450d6ce010460927e90
-    name: root-server
     depends_on:
       dnssec-setup:
         condition: service_completed_successfully
