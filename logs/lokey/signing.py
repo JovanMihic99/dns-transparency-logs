@@ -32,11 +32,12 @@ def load_or_create_private_key() -> Ed25519PrivateKey:
             PRIVATE_KEY_FILE.read_bytes(),
             password=None,
         )
-
+        PRIVATE_KEY_FILE.chmod(0o600)
         if not isinstance(key, Ed25519PrivateKey):
             raise TypeError("Stored private key is not an Ed25519 key")
 
         return key
+    
 
     key = Ed25519PrivateKey.generate()
 
@@ -73,7 +74,6 @@ def export_public_key() -> Path:
 def sign_payload(payload: dict) -> str:
     """Sign a dictionary and return its signature as hexadecimal."""
     private_key = load_or_create_private_key()
-
     return private_key.sign(canonical_json(payload)).hex()
 
 
