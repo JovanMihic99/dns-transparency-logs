@@ -1,14 +1,16 @@
 """LoKey collector loop: poll watched domains, diff, emit events (spec sections 3 and 4).
 
-Each event is one line of JSON in the spec section 4 format ({"observation", "assessment"}),
-appended to --out (default events.jsonl) and printed. P3's log reads that file.
-Run from the repo root:  python -m collector.run victim.test
+Each event ({"observation", "assessment"}, spec section 4) is appended to --out as a local
+backup (JSON Lines) and POSTed to P3's log at --log-url.
+Run from the repo root:  python -m collector.run victim.test --log-url http://127.0.0.1:5000/events
 """
 import argparse
 import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 
 from collector.snapshot import CollectorError, diff, take_snapshot_live
 
@@ -27,15 +29,29 @@ def assess(obs):
     return {"risk": risk, "reasons": [reason], "rules_version": "v0-stub"}
 
 
-def emit(event, path):
-    line = json.dumps(event, sort_keys=True, ensure_ascii=False)
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
-    print(line, flush=True)
-
-
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
+
+
+def post(event_json, url):
+    req = urllib.request.Request(url, data=event_json.encode("utf-8"),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            log(f"[log] {r.status} {r.read(300).decode(errors='replace')}")
+    except urllib.error.HTTPError as e:
+        log(f"[log] HTTP {e.code}: {e.read(300).decode(errors='replace')}")
+    except urllib.error.URLError as e:
+        log(f"[log] unreachable ({e.reason}); event kept in the local file")
+
+
+def emit(event, out_path, log_url):
+    line = json.dumps(event, sort_keys=True, ensure_ascii=False)
+    with open(out_path, "a", encoding="utf-8") as f:  # local backup
+        f.write(line + "\n")
+    print(line, flush=True)
+    if log_url:
+        post(line, log_url)
 
 
 def main():
@@ -44,10 +60,13 @@ def main():
     p.add_argument("--tld", default=os.environ.get("LOKEY_TLD_IP", "172.30.0.11"))
     p.add_argument("--interval", type=float, default=10.0, help="seconds between polls (spec: 10)")
     p.add_argument("--out", default=os.environ.get("LOKEY_EVENTS", "events.jsonl"))
+    p.add_argument("--log-url", default=os.environ.get("LOKEY_LOG_URL", ""),
+                   help="P3's log endpoint, e.g. http://127.0.0.1:5000/events (empty = file only)")
     args = p.parse_args()
 
     last = {}
-    log(f"watching {args.domains} via tld {args.tld}, every {args.interval}s -> {args.out}")
+    log(f"watching {args.domains} via tld {args.tld}, every {args.interval}s "
+        f"-> {args.out}" + (f" + {args.log_url}" if args.log_url else ""))
     while True:
         started = time.monotonic()
         for domain in args.domains:
@@ -61,7 +80,7 @@ def main():
             obs = diff(last.get(domain), snap)
             last[domain] = snap
             if obs:
-                emit({"observation": obs, "assessment": assess(obs)}, args.out)
+                emit({"observation": obs, "assessment": assess(obs)}, args.out, args.log_url)
         time.sleep(max(0.0, args.interval - (time.monotonic() - started)))
 
 
