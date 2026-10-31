@@ -1,5 +1,11 @@
 from flask import Flask, jsonify, request, abort
-from lokey.store import append_event, read_events, signed_tree_head, proof_for
+from lokey.store import (
+    append_event,
+    read_events,
+    signed_tree_head,
+    proof_for,
+    consistency_proof_for,
+)
 
 app = Flask(__name__)
 
@@ -30,6 +36,13 @@ def inclusion(index):
         return jsonify(proof_for(index))
     except IndexError:
         abort(404, description="No event at that index")
+
+@app.get("/consistency/<int:old_size>")
+def consistency(old_size):
+    try:
+        return jsonify(consistency_proof_for(old_size))
+    except ValueError as error:
+        abort(400, description=str(error))
 
 if __name__ == "__main__":
     # Development only. Put behind an authenticated service in real deployments.
