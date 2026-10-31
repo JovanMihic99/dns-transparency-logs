@@ -13,6 +13,7 @@ services:
       LOKEY_TLD_IP: 172.30.0.11
       LOKEY_LOG_URL: http://lokey:5000/events
       LOKEY_EVENTS: /app/data/events.jsonl
+      LOKEY_STATE: /app/data/state.json
     volumes:
       - ./data:/app/data:Z
     networks:

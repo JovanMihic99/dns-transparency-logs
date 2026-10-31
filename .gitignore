@@ -60,3 +60,4 @@ logs/data/tree_heads.jsonl
 # Other data files
 events.jsonl
 collector/data/
+collector_state.json
