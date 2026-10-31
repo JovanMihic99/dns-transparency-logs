@@ -27,6 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source code
 COPY app.py verify.py ./
 COPY lokey/ ./lokey/
+COPY templates/ ./templates/
+COPY static/ ./static/
+
 
 # Create data directory
 RUN mkdir -p /app/data && \

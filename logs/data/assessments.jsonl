@@ -1,0 +1,5 @@
+{"assessment":{"reasons":["Unexpected nameserver change"],"risk":"high","rules_version":"v1"},"leaf_hash":"98c1be2346909416eb27ba0b4c4a4901032d17ed19feb308ebe8ba635783bb03","recorded_at":"2026-10-31T21:08:23.756739+00:00"}
+{"assessment":{"reasons":["Delegation signer record disappeared"],"risk":"high","rules_version":"v1"},"leaf_hash":"453072e8ace0c0fd2a07430aeb4fc09b4f6d345af691aee76743ede80c17181e","recorded_at":"2026-10-31T21:08:23.776289+00:00"}
+{"assessment":{"reasons":["DNSKEY set changed"],"risk":"medium","rules_version":"v1"},"leaf_hash":"9f8dfcd43c8eacb8ad3ba96a151c372534a459daf3d4f87d8ebabb12922af052","recorded_at":"2026-10-31T21:08:23.794129+00:00"}
+{"assessment":{"reasons":["CDS record published"],"risk":"low","rules_version":"v1"},"leaf_hash":"a4150ec0bc20539c1d26fdaf62490dd70427f3077c6a6deb672d4818fae1929c","recorded_at":"2026-10-31T21:08:23.815132+00:00"}
+{"assessment":{"reasons":["DS record replaced"],"risk":"medium","rules_version":"v1"},"leaf_hash":"7062510d25858684f452989fc2a3c971f8c7136d313fc01b01d07ce9c02d9461","recorded_at":"2026-10-31T21:08:23.836683+00:00"}

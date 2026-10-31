@@ -15,6 +15,7 @@ COPY collector/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY collector/ ./collector/
+COPY scoring/ ./scoring/
 
 RUN mkdir -p /app/data && chown -R lokey:lokey /app
 USER lokey

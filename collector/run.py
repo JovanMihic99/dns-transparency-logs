@@ -1,8 +1,8 @@
-"""LoKey collector loop: poll watched domains, diff, emit events (spec sections 3 and 4).
+"""LoKey collector loop: poll watched domains, diff, score, emit events (spec sections 3-5).
 
 Each event ({"observation", "assessment"}, spec section 4) is appended to --out as a local
-backup (JSON Lines) and POSTed to P3's log at --log-url. The last snapshot per domain is
-saved to --state, so a restart resumes from the last known state instead of re-baselining.
+backup (JSON Lines) and POSTed to P3's log at --log-url. The last snapshot and the scoring
+history per domain are saved to --state, so a restart resumes instead of re-baselining.
 Run from the repo root:  python -m collector.run victim.test --log-url http://127.0.0.1:5000/events
 """
 import argparse
@@ -14,21 +14,9 @@ import urllib.error
 import urllib.request
 
 from collector.snapshot import CollectorError, diff, take_snapshot_live
+from scoring.rules import RULES_VERSION, empty_history, score, update_history
 
-DS_CHANGES = {"DS_ADDED", "DS_REMOVED", "DS_ALL_REMOVED", "DS_REPLACED"}
 STATE_FIELDS = ("domain", "observed_at", "ns", "ds", "dnskey", "cds")
-
-
-def assess(obs):
-    """PLACEHOLDER until scoring/ has rules v1. Too strict: a valid DS rollover scores high."""
-    ch = set(obs["changes"])
-    if ch & {"DS_REPLACED", "DS_ALL_REMOVED"} or ("NS_CHANGED" in ch and ch & DS_CHANGES):
-        risk, reason = "high", "placeholder: DS replaced/removed, or NS and DS changed together"
-    elif "NS_CHANGED" in ch:
-        risk, reason = "medium", "placeholder: NS changed"
-    else:
-        risk, reason = "low", "placeholder: no DS or NS change"
-    return {"risk": risk, "reasons": [reason], "rules_version": "v0-stub"}
 
 
 def log(msg):
@@ -61,24 +49,51 @@ def emit(event, out_path, log_url):
         post(line, log_url)
 
 
+def safe_score(obs, history, snap, pre):
+    """Fail safe: if scoring itself breaks, report the change as high instead of hiding it."""
+    try:
+        return score(obs, history, snap, pre)
+    except Exception as e:
+        log(f"[score] ERROR {e!r}; reporting as high")
+        return {"risk": "high", "reasons": [f"scoring error: {e!r}"], "rules_version": RULES_VERSION}
+
+
+def load_preannouncements(path):
+    """List of {domain, new_ns, new_ds (optional), valid_until}; reread every poll."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as e:
+        log(f"[pre] WARNING: cannot read {path} ({e}); ignoring pre-announcements")
+        return []
+
+
 def load_state(path):
-    """Last saved snapshot per domain (spec fields only), or {} if there is none."""
+    """(snapshots, histories) per domain, or ({}, {}) if there is no state file."""
     try:
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
     except FileNotFoundError:
-        return {}
+        return {}, {}
     except (OSError, ValueError) as e:
         log(f"[state] WARNING: cannot read {path} ({e}); starting with fresh baselines")
-        return {}
-    for domain, snap in state.items():
+        return {}, {}
+    if "snapshots" in state:
+        snaps, hist = state["snapshots"], state.get("history", {})
+    else:  # old format: snapshots only
+        snaps, hist = state, {}
+    for domain, snap in snaps.items():
         log(f"[resume] {domain} ns={snap['ns']} ds={[d.split()[0] for d in snap['ds']]} "
-            f"(last seen {snap['observed_at']})")
-    return state
+            f"(last seen {snap['observed_at']}, history {'yes' if domain in hist else 'no'})")
+    return snaps, hist
 
 
-def save_state(path, last):
-    data = {d: {k: s[k] for k in STATE_FIELDS} for d, s in last.items()}
+def save_state(path, last, history):
+    data = {"snapshots": {d: {k: s[k] for k in STATE_FIELDS} for d, s in last.items()},
+            "history": history}
     tmp = f"{path}.tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -97,14 +112,18 @@ def main():
     p.add_argument("--log-url", default=os.environ.get("LOKEY_LOG_URL", ""),
                    help="P3's log endpoint, e.g. http://127.0.0.1:5000/events (empty = file only)")
     p.add_argument("--state", default=os.environ.get("LOKEY_STATE", "collector_state.json"),
-                   help="file with the last snapshot per domain, survives restarts")
+                   help="last snapshot + scoring history per domain, survives restarts")
+    p.add_argument("--preannouncements",
+                   default=os.environ.get("LOKEY_PREANNOUNCEMENTS", "preannouncements.json"))
     args = p.parse_args()
 
-    last = load_state(args.state)
+    last, history = load_state(args.state)
     log(f"watching {args.domains} via tld {args.tld}, every {args.interval}s "
-        f"-> {args.out}" + (f" + {args.log_url}" if args.log_url else "") + f", state {args.state}")
+        f"-> {args.out}" + (f" + {args.log_url}" if args.log_url else "")
+        + f", state {args.state}, scoring {RULES_VERSION}")
     while True:
         started = time.monotonic()
+        pre = load_preannouncements(args.preannouncements)
         for domain in args.domains:
             try:
                 snap = take_snapshot_live(domain, args.tld)
@@ -113,11 +132,17 @@ def main():
                 continue
             if domain not in last:
                 log(f"[baseline] {domain} ns={snap['ns']} ds={[d.split()[0] for d in snap['ds']]}")
+            hist = history.get(domain, empty_history())
             obs = diff(last.get(domain), snap)
-            if obs:
-                emit({"observation": obs, "assessment": assess(obs)}, args.out, args.log_url)
+            if obs:  # score with the history from EARLIER polls only
+                emit({"observation": obs, "assessment": safe_score(obs, hist, snap, pre)},
+                     args.out, args.log_url)
+            try:
+                history[domain] = update_history(hist, snap)
+            except Exception as e:
+                log(f"[score] ERROR updating history for {domain}: {e!r}; keeping the old history")
             last[domain] = snap
-            save_state(args.state, last)  # after emit: a crash re-sends, never loses, the event
+            save_state(args.state, last, history)  # after emit: a crash re-sends, never loses
         time.sleep(max(0.0, args.interval - (time.monotonic() - started)))
 
 
