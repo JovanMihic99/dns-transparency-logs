@@ -1,0 +1,7 @@
+$ORIGIN victim.test.
+$TTL 30
+@   IN SOA ns1.provider.test. hostmaster.victim.test. 1 30 30 300 30
+@   IN NS  ns1.provider.test.
+@   IN DNSKEY 257 3 13 TkTtXiDTYeGnnuaKp8Uo5weMKNFWqrue FsqLFO0MfL6lO5ZzkvEj3oLrFwCjLCbb S+e5ggFKaLEHPk0lSOo9ww==
+@   IN DNSKEY 256 3 13 I1g9UzOivKLYTG/WVos+rrYOOd/X9FLf wTrqBouNRapQJKSCPlwBRDruact7BhLu 3JBwC4eSFTeNzTeGRR1xJQ==
+@   IN A   192.0.2.10

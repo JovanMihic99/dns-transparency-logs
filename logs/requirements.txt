@@ -1,0 +1,4 @@
+Flask>=3.0,<4
+cryptography>=42,<46
+pytest>=8,<9
+requests>=2.31,<3
