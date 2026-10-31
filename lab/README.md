@@ -286,3 +286,30 @@ Run the complete test from the repository root:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-cds-rollover.ps1
 ```
 
+## Scenario 1: legitimate ZSK-only rollover
+
+Scenario 1 temporarily replaces only the provider container with an isolated
+split KSK/ZSK signing environment. It retains the parent-trusted CSK public and
+private key as the KSK, generates independent ZSKs, and leaves the shared
+`provider_state` volume untouched. Parent DS and NS records do not change.
+
+Run the complete Scenario 1 test from the repository root:
+
+```powershell
+docker compose -p lab -f .\lab\docker-compose.yml up -d
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-zsk-rollover.ps1
+```
+
+The test checks old/new ZSK publication and signature overlap, exact KSK
+identity, unchanged parent DS/NS, measured TTL cache safety, and Unbound
+`AD=true` at every phase. It restores the original CSK provider even when a
+test fails. For safe manual recovery:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\reset-zsk-rollover.ps1
+```
+
+Do not remove either provider volume. See
+[`scenarios/zsk-rollover/README.md`](../scenarios/zsk-rollover/README.md) for
+the architecture, phase commands, observation output, and rollback reasoning.
+

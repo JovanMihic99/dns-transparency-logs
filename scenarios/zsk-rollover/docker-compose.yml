@@ -1,0 +1,44 @@
+services:
+  provider:
+    entrypoint: ["/bin/sh", "/opt/zsk/start-provider.sh"]
+    command: []
+    volumes:
+      - ../scenarios/zsk-rollover/provider.named.conf:/etc/bind/named.conf:ro
+      - ../scenarios/zsk-rollover/start-provider.sh:/opt/zsk/start-provider.sh:ro
+      - zsk_provider_state:/var/lib/bind
+
+  zsk-prepare:
+    profiles: ["tools"]
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/zsk/prepare.sh"]
+    command: []
+    volumes:
+      - ../scenarios/zsk-rollover/prepare.sh:/opt/zsk/prepare.sh:ro
+      - ./provider/db.victim.test:/opt/zsk/base.zone:ro
+      - provider_state:/source-provider:ro
+      - zsk_provider_state:/target
+    networks:
+      - dns_lab
+
+  zsk-rollover:
+    profiles: ["tools"]
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/zsk/rollover.sh"]
+    command: ["status"]
+    volumes:
+      - ../scenarios/zsk-rollover/rollover.sh:/opt/zsk/rollover.sh:ro
+      - ./provider/rollover-control.key:/opt/zsk/rollover-control.key:ro
+      - zsk_provider_state:/zsk-state
+    depends_on:
+      provider:
+        condition: service_healthy
+      tld:
+        condition: service_healthy
+      unbound:
+        condition: service_healthy
+    networks:
+      - dns_lab
+
+volumes:
+  zsk_provider_state:
+    name: lab_zsk_provider_state
