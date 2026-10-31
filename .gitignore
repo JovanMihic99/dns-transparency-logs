@@ -62,3 +62,7 @@ events.jsonl
 collector/data/
 collector_state.json
 preannouncements.json
+live_results.txt
+
+# local secrets, never commit
+logs/.env
