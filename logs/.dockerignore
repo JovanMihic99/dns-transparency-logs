@@ -1,0 +1,26 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Git
+.git/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Test and development files
+tests/
+docs.md
+README.md
+
+# Persistent application data
+data/
+
+# Cryptographic keys
+*.pem
+
+# Logs
+*.log
