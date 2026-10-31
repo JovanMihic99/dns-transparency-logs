@@ -173,7 +173,11 @@ def diff(old, new):
     if old["dnskey"] != new["dnskey"]:
         changes.append("DNSKEY_CHANGED")
     if old["cds"] != new["cds"]:
-        changes.append("CDS_PUBLISHED" if new["cds"] else "CDS_REMOVED")
+        o, n = set(old["cds"]), set(new["cds"])
+        if n - o:
+           changes.append("CDS_PUBLISHED")  # new CDS record(s) appeared
+        if o - n:
+            changes.append("CDS_REMOVED")    # CDS record(s) disappeared (some or all)
     if not changes:
         return None
 

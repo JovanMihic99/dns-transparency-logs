@@ -51,3 +51,15 @@ def test_observation_is_canonical_json_without_raw():
 def test_provider_ds_matches_its_ksk():
     raw = before()["_raw"]
     assert any(dns.dnssec.make_ds(VICTIM, k, "SHA256") in raw["ds"] for k in raw["dnskey"])
+
+
+def test_cds_change_types_are_precise():
+    base = {"domain": "x.test", "observed_at": "t", "ns": [], "ds": [], "dnskey": []}
+    two = dict(base, cds=["1 13 2 aa", "2 13 2 bb"])
+    one = dict(base, cds=["2 13 2 bb"])
+    other = dict(base, cds=["3 13 2 cc"])
+    none = dict(base, cds=[])
+    assert diff(two, one)["changes"] == ["CDS_REMOVED"]                   # shrink 2 -> 1
+    assert diff(one, two)["changes"] == ["CDS_PUBLISHED"]                 # grow 1 -> 2
+    assert diff(one, other)["changes"] == ["CDS_PUBLISHED", "CDS_REMOVED"]  # swap
+    assert diff(one, none)["changes"] == ["CDS_REMOVED"]                  # all gone
