@@ -43,16 +43,20 @@ def post(event_json, url):
         log(f"[log] HTTP {e.code}: {e.read(300).decode(errors='replace')}")
     except urllib.error.URLError as e:
         log(f"[log] unreachable ({e.reason}); event kept in the local file")
+    except Exception as e:  # e.g. a raw timeout: never let the log kill the collector
+        log(f"[log] failed ({e!r}); event kept in the local file")
 
 
 def emit(event, out_path, log_url):
     line = json.dumps(event, sort_keys=True, ensure_ascii=False)
-    with open(out_path, "a", encoding="utf-8") as f:  # local backup
-        f.write(line + "\n")
+    try:
+        with open(out_path, "a", encoding="utf-8") as f:  # local backup
+            f.write(line + "\n")
+    except OSError as e:  # a broken backup must not stop the event reaching the log
+        log(f"[backup] cannot write {out_path}: {e}")
     print(line, flush=True)
     if log_url:
         post(line, log_url)
-
 
 def main():
     p = argparse.ArgumentParser(description="LoKey collector loop")
