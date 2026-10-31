@@ -49,8 +49,13 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
+# Virtual environment
+.venv/
+
 # My data files
 logs/data/log_ed25519_private.pem
 logs/data/events.jsonl
 logs/data/tree_heads.jsonl
-logs/data/events.jsonl
+
+# Other data files
+events.jsonl
