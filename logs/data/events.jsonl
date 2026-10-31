@@ -1,1 +1,3 @@
 {"change":"DS_REPLACED","domain":"victim.test","observed_at":"2026-10-31T11:38:56.769243+00:00","reasons":["DS swapped with no prior trail"],"risk":"high"}
+{"change":"DOUBLE_KSK_ROLLOVER","domain":"victim.test","observed_at":"2026-10-31T13:57:40.112345+00:00","reasons":["New key published and signed by old key"],"risk":"low"}
+{"change":"DOUBLE_KSK_ROLLOVER","domain":"victim.test","observed_at":"2026-10-31T13:59:35.271547+00:00","reasons":["New key published and signed by old key"],"risk":"low"}
