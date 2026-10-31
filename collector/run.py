@@ -134,11 +134,13 @@ def main():
                 log(f"[baseline] {domain} ns={snap['ns']} ds={[d.split()[0] for d in snap['ds']]}")
             hist = history.get(domain, empty_history())
             obs = diff(last.get(domain), snap)
+            risk = None
             if obs:  # score with the history from EARLIER polls only
-                emit({"observation": obs, "assessment": safe_score(obs, hist, snap, pre)},
-                     args.out, args.log_url)
+                assessment = safe_score(obs, hist, snap, pre)
+                risk = assessment["risk"]
+                emit({"observation": obs, "assessment": assessment}, args.out, args.log_url)
             try:
-                history[domain] = update_history(hist, snap)
+                history[domain] = update_history(hist, snap, risk)
             except Exception as e:
                 log(f"[score] ERROR updating history for {domain}: {e!r}; keeping the old history")
             last[domain] = snap
@@ -151,3 +153,26 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         log("stopped")
+
+
+# ---------- v1.1: trust gained through a high-risk change ----------
+
+def test_rehijack_after_restore_has_no_trail():
+    prov, att = Key(), Key()
+    out = feed([snap(0, PROV, [prov], [prov]),
+                snap(1, ATT, [att], [att]),      # hijack
+                snap(2, ATT, [att], [att]),      # attacker holds the domain for a while
+                snap(3, PROV, [prov], [prov]),   # restore
+                snap(4, ATT, [att], [att])])     # hijack again
+    last = out[-1][1]
+    assert last["risk"] == "high"
+    assert "DS replaced with no trail signed by the previously trusted key" in last["reasons"]
+
+
+def test_dnskey_change_signed_only_by_quarantined_key_is_medium():
+    prov, att, att2 = Key(), Key(), Key()
+    out = run([snap(0, PROV, [prov], [prov]),
+               snap(1, ATT, [att], [att]),          # hijack
+               snap(2, ATT, [att], [att, att2])])   # attacker changes "its" DNSKEY set
+    assert out == [(["NS_CHANGED", "DS_REPLACED", "DNSKEY_CHANGED"], "high"),
+                   (["DNSKEY_CHANGED"], "medium")]
