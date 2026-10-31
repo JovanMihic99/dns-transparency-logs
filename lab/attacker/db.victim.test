@@ -1,0 +1,12 @@
+$TTL 30
+@  IN SOA ns.attacker.test. hostmaster.attacker.victim.test. (
+       2026103101 ; serial
+       30         ; refresh
+       30         ; retry
+       120        ; expire
+       30         ; negative cache TTL
+)
+    IN NS  ns.attacker.test.
+    IN A   192.0.2.66
+www IN A   192.0.2.66
+
