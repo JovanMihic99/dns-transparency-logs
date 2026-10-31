@@ -73,3 +73,27 @@ The collector can POST the shared event object, for example:
   make it tamper-proof. Back up and externally publish/checkpoint tree heads.
 - Run only against your isolated `.test` lab and synthetic events, as specified
   in the project plan.
+
+
+
+
+## Telegram notifications
+
+LoKey optionally supports Telegram alerts for high-risk DNS events.
+
+1. Create a Telegram bot using @BotFather.
+2. Start a conversation with your bot.
+3. Obtain your chat ID using the Telegram getUpdates API.
+4. Copy the example configuration:
+
+   cp .env.example .env
+
+5. Configure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+6. Set TELEGRAM_ENABLED=true.
+
+Start LoKey:
+
+docker compose up -d --build
+
+Without Telegram configuration, LoKey continues operating
+normally without sending notifications.
