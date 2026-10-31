@@ -1,5 +1,6 @@
 *
 !collector/
+!scoring/
 collector/data/
 collector/testdata/
 **/__pycache__/

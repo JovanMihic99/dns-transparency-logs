@@ -14,6 +14,7 @@ services:
       LOKEY_LOG_URL: http://lokey:5000/events
       LOKEY_EVENTS: /app/data/events.jsonl
       LOKEY_STATE: /app/data/state.json
+      LOKEY_PREANNOUNCEMENTS: /app/data/preannouncements.json
     volumes:
       - ./data:/app/data:Z
     networks:
