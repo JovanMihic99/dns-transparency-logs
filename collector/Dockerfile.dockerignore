@@ -1,0 +1,6 @@
+*
+!collector/
+collector/data/
+collector/testdata/
+**/__pycache__/
+**/*.pyc

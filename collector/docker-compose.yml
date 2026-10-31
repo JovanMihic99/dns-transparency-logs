@@ -1,0 +1,30 @@
+services:
+  collector:
+    container_name: lokey-collector
+    build:
+      context: ..
+      dockerfile: collector/Dockerfile
+      args:
+        UID: ${LOKEY_UID:-1000}
+        GID: ${LOKEY_GID:-1000}
+    user: "${LOKEY_UID:-1000}:${LOKEY_GID:-1000}"
+    command: [ "victim.test" ]
+    environment:
+      LOKEY_TLD_IP: 172.30.0.11
+      LOKEY_LOG_URL: http://lokey:5000/events
+      LOKEY_EVENTS: /app/data/events.jsonl
+      LOKEY_STATE: /app/data/state.json
+    volumes:
+      - ./data:/app/data:Z
+    networks:
+      - lab
+      - logs
+    restart: unless-stopped
+
+networks:
+  lab:
+    name: lab_dns_lab # P1's lab: reach the tld server at 172.30.0.11
+    external: true
+  logs:
+    name: logs_default # Jovan's log: reach http://lokey:5000
+    external: true
