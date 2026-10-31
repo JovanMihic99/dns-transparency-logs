@@ -10,8 +10,8 @@ The validated path is:
 
 The attacker remains separate and serves an independently signed synthetic copy
 of `victim.test.`. The mock-registrar scenario can deliberately switch the
-parent NS and DS records between the provider and attacker. Automatic rollover
-scenarios are not implemented yet.
+parent NS and DS records between the provider and attacker. The lab also has
+legitimate direct-registrar and CDS-driven KSK rollover scenarios.
 
 ## What persists
 
@@ -197,4 +197,92 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\test-registrar-hijack.ps1
 
 The regression restores the provider in a `finally` block even when a check
 fails. Do not interrupt it while the restoration message is displayed.
+
+## Scenario 2: legitimate Double-KSK rollover
+
+The provider uses the explicit `lokey-rollover` DNSSEC policy. It keeps BIND's
+existing ECDSAP256SHA256 combined signing key (CSK) architecture: every CSK is
+also a KSK because it has the SEP/KSK flag. BIND implements its KSK-side
+transition using the normal Double-KSK sequence.
+
+The policy uses short lab-only TTL and propagation margins. The scenario also
+uses BIND's `dnssec-settime -s` test facility to compress waiting time, but only
+after proving that every live authoritative RRset is signed by the successor.
+This clock compression is suitable for this isolated synthetic lab, not a real
+production zone.
+
+Run the complete regression from PowerShell:
+
+```powershell
+Set-Location C:\path\to\dns-transparency-logs\lab
+docker compose up -d
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test-ksk-rollover.ps1
+```
+
+The test does not restart the lab between rollover phases. It flushes only the
+`victim.test.` Unbound cache so each AD assertion performs fresh validation.
+The final line reports the predecessor and successor key tags.
+
+To inspect the current BIND policy state and all JSONL observations:
+
+```powershell
+docker compose run --rm ksk-rollover status
+docker compose run --rm ksk-rollover events
+```
+
+Each new run has a `run_id`. The important low-risk sequence is:
+
+1. `baseline`: one DNSKEY and its matching parent DS, AD=true.
+2. `new-key-published`: old parent DS, two DNSKEYs, both DNSKEY signatures,
+   AD=true. This proves the trusted predecessor authenticated the successor.
+3. `parent-double-ds`: old and new DS records coexist, AD=true.
+4. `new-key-active`: successor DS has been acknowledged to BIND, AD=true.
+5. `old-ds-withdrawn`: parent contains only the successor DS while both child
+   DNSKEYs still overlap, AD=true.
+6. `complete`: only the successor DNSKEY and DS remain, AD=true.
+
+For a manual, observable transition:
+
+```powershell
+docker compose up -d
+docker compose kill -s HUP unbound
+powershell -NoProfile -ExecutionPolicy Bypass -File .\reset-ksk-rollover.ps1
+docker compose run --rm ksk-rollover begin
+docker compose exec unbound unbound-control flush_zone victim.test.
+docker compose exec root dig '@172.30.0.14' www.victim.test. A +dnssec
+
+docker compose run --rm registrar sync-provider-ds
+docker compose exec unbound unbound-control flush_zone victim.test.
+docker compose run --rm ksk-rollover acknowledge-published
+
+$NewTag = docker compose run --rm ksk-rollover new-tag
+docker compose run --rm registrar sync-provider-ds --key-tag $NewTag
+docker compose exec unbound unbound-control flush_zone victim.test.
+docker compose run --rm ksk-rollover acknowledge-withdrawn
+
+docker compose exec unbound unbound-control flush_zone victim.test.
+docker compose exec root dig '@172.30.0.14' www.victim.test. A +dnssec
+docker compose run --rm ksk-rollover events
+```
+
+If a manual run is interrupted, this command safely completes it at the
+successor key; it does not delete keys or volumes and does not attempt to return
+to a cryptographically retired predecessor:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\reset-ksk-rollover.ps1
+```
+
+# Scenario 4: CDS-driven rollover
+
+Scenario 4 validates child CDS cryptographically before changing the parent DS,
+maintains an observable double-DS overlap, and preserves `AD=true` throughout.
+See [`scenarios/cds-rollover/README.md`](../scenarios/cds-rollover/README.md) for
+the architecture, PowerShell demonstration, diagnostics, and safe recovery.
+
+Run the complete test from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-cds-rollover.ps1
+```
 
