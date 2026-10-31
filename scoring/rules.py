@@ -1,8 +1,12 @@
-"""LoKey scoring rules v1 (LoKey_spec.md section 5).
+"""LoKey scoring rules v1.1 (LoKey_spec.md section 5).
 
 Key continuity: a legitimate DS change leaves a trail signed by the previously trusted key
 and seen at least one poll BEFORE the change. Call score() with the history from earlier
-polls, then update_history() with the new snapshot. History is plain JSON (persistable).
+polls, then update_history() with the new snapshot and the risk just assigned.
+
+v1.1: keys that first become trusted in a HIGH-risk change are quarantined. They never sign
+a trail and never make a later change low, until the domain's state is reset.
+History is plain JSON (persistable).
 """
 from datetime import datetime
 
@@ -14,7 +18,7 @@ import dns.rdataclass
 import dns.rdatatype
 import dns.rrset
 
-RULES_VERSION = "v1"
+RULES_VERSION = "v1.1"
 SEVERITY = {"low": 0, "medium": 1, "high": 2}
 IN = dns.rdataclass.IN
 DS_CHANGES = {"DS_ADDED", "DS_REMOVED", "DS_ALL_REMOVED", "DS_REPLACED"}
@@ -22,7 +26,7 @@ CDS_DELETE = "0 0 0 00"  # RFC 8078: "please remove all DS"
 
 
 def empty_history():
-    return {"trusted": [], "trail_keys": [], "trail_cds": []}
+    return {"trusted": [], "trail_keys": [], "trail_cds": [], "quarantine": []}
 
 
 # ---------- DNSSEC helpers ----------
@@ -64,6 +68,12 @@ def trusted_keys(snap):
                   and _validates(raw.get("dnskey"), raw.get("dnskey_rrsig"), name, [k]))
 
 
+def _signers(history, now_trusted):
+    """Keys allowed to vouch for a trail: trusted before or now, but never quarantined."""
+    quarantine = set(history.get("quarantine", []))
+    return sorted((set(history["trusted"]) | set(now_trusted)) - quarantine)
+
+
 def _has_trail(name, ds_text, history):
     return (any(_ds_matches_key(name, ds_text, k) for k in history["trail_keys"])
             or _norm(ds_text) in history["trail_cds"])
@@ -71,18 +81,22 @@ def _has_trail(name, ds_text, history):
 
 # ---------- history ----------
 
-def update_history(history, snap):
-    """Call after every poll (also the baseline), AFTER score()."""
+def update_history(history, snap, risk=None):
+    """Call after every poll (also the baseline), AFTER score(), with the risk just assigned."""
     raw = snap.get("_raw") or {}
     name = dns.name.from_text(snap["domain"])
     now_trusted = trusted_keys(snap)
-    signers = sorted(set(history["trusted"]) | set(now_trusted))
+    quarantine = set(history.get("quarantine", []))
+    if risk == "high":  # trust gained through a high-risk change is not real trust
+        quarantine |= set(now_trusted) - set(history["trusted"]) - set(history["trail_keys"])
+    signers = sorted((set(history["trusted"]) | set(now_trusted)) - quarantine)
     trail_keys, trail_cds = set(history["trail_keys"]), set(history["trail_cds"])
     if _validates(raw.get("dnskey"), raw.get("dnskey_rrsig"), name, signers):
         trail_keys |= set(snap["dnskey"])  # published in a set signed by a trusted key
     if snap["cds"] and _validates(raw.get("cds"), raw.get("cds_rrsig"), name, signers):
         trail_cds |= {_norm(c) for c in snap["cds"]}
-    return {"trusted": now_trusted, "trail_keys": sorted(trail_keys), "trail_cds": sorted(trail_cds)}
+    return {"trusted": now_trusted, "trail_keys": sorted(trail_keys),
+            "trail_cds": sorted(trail_cds), "quarantine": sorted(quarantine)}
 
 
 # ---------- pre-announcements ----------
@@ -125,6 +139,7 @@ def score(obs, history, snap=None, preannouncements=()):
     before, after = obs["before"], obs["after"]
     ds_changed = bool(ch & DS_CHANGES)
     now_trusted = trusted_keys(snap) if snap else []
+    quarantine = set(history.get("quarantine", []))
     findings = []
 
     # NS (with or without DS) and pre-announcements
@@ -161,18 +176,20 @@ def score(obs, history, snap=None, preannouncements=()):
 
     # DNSKEY (only on its own: with a DS change it is explained by the DS rule above)
     if "DNSKEY_CHANGED" in ch and not ds_changed:
+        clean = [k for k in now_trusted if k not in quarantine]
         if not after["ds"]:
             findings.append(("low", "DNSKEY set changed on a domain without DS"))
-        elif now_trusted:
+        elif clean:
             findings.append(("low", "DNSKEY set changed, still signed by a key matching a current DS"))
+        elif now_trusted:
+            findings.append(("medium", "DNSKEY set changed, signed only by a key trusted since an unconfirmed high-risk change"))
         else:
             findings.append(("medium", "DNSKEY set changed and no longer validates under the parent DS"))
 
     # CDS
     if "CDS_PUBLISHED" in ch:
         raw = (snap or {}).get("_raw") or {}
-        signers = sorted(set(history["trusted"]) | set(now_trusted))
-        if _validates(raw.get("cds"), raw.get("cds_rrsig"), name, signers):
+        if _validates(raw.get("cds"), raw.get("cds_rrsig"), name, _signers(history, now_trusted)):
             findings.append(("low", "CDS published, signed by the trusted key"))
         else:
             findings.append(("medium", "CDS published but not signed by a trusted key"))

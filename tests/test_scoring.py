@@ -58,16 +58,23 @@ def snap(i, ns, ds, keys, signers=None, cds=(), cds_signers=None):
                      "cds": cds_set, "cds_rrsig": _sign(cds_set, cds_signers)}}
 
 
-def run(snaps, pre=()):
-    """Feed snapshots like the collector loop: diff -> score (old history) -> update history."""
+def feed(snaps, pre=()):
+    """Like the collector loop: diff -> score (old history) -> update history with that risk."""
     history, prev, out = empty_history(), None, []
     for s in snaps:
         obs = diff(prev, s)
+        risk = None
         if obs:
-            out.append((obs["changes"], score(obs, history, s, pre)["risk"]))
-        history = update_history(history, s)
+            assessment = score(obs, history, s, pre)
+            out.append((obs, assessment))
+            risk = assessment["risk"]
+        history = update_history(history, s, risk)
         prev = s
     return out
+
+
+def run(snaps, pre=()):
+    return [(obs["changes"], a["risk"]) for obs, a in feed(snaps, pre)]
 
 
 def risks(results):
@@ -165,3 +172,25 @@ def test_trail_signed_only_by_attacker_does_not_count():
                snap(1, PROV, [old], [old, att], signers=[att]),  # fake trail, not signed by old
                snap(2, PROV, [att], [old, att], signers=[att])])
     assert out[-1] == (["DS_REPLACED"], "high")
+
+# ---------- v1.1: trust gained through a high-risk change ----------
+
+def test_rehijack_after_restore_has_no_trail():
+    prov, att = Key(), Key()
+    out = feed([snap(0, PROV, [prov], [prov]),
+                snap(1, ATT, [att], [att]),      # hijack
+                snap(2, ATT, [att], [att]),      # attacker holds the domain for a while
+                snap(3, PROV, [prov], [prov]),   # restore
+                snap(4, ATT, [att], [att])])     # hijack again
+    last = out[-1][1]
+    assert last["risk"] == "high"
+    assert "DS replaced with no trail signed by the previously trusted key" in last["reasons"]
+
+
+def test_dnskey_change_signed_only_by_quarantined_key_is_medium():
+    prov, att, att2 = Key(), Key(), Key()
+    out = run([snap(0, PROV, [prov], [prov]),
+               snap(1, ATT, [att], [att]),          # hijack
+               snap(2, ATT, [att], [att, att2])])   # attacker changes "its" DNSKEY set
+    assert out == [(["NS_CHANGED", "DS_REPLACED", "DNSKEY_CHANGED"], "high"),
+                   (["DNSKEY_CHANGED"], "medium")]
