@@ -1,0 +1,14 @@
+$TTL 30
+@  IN SOA ns.test. hostmaster.test. (
+       2026103101 ; serial
+       30         ; refresh
+       30         ; retry
+       120        ; expire
+       30         ; negative cache TTL
+)
+   IN NS  ns.test.
+ns IN A   172.30.0.11
+
+victim           IN NS  ns.victim.test.
+ns.victim        IN A   172.30.0.12
+

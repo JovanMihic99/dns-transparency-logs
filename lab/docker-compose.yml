@@ -1,0 +1,141 @@
+name: lokey-dns-lab
+
+services:
+  root:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
+    command: []
+    environment:
+      ZONE_FILE: db.root
+    volumes:
+      - ./root/named.conf:/etc/bind/named.conf:ro
+      - ./root/db.root:/opt/lab/base.zone:ro
+      - ./root/bootstrap.key:/opt/lab/bootstrap.key:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - ./test-dnssec.sh:/opt/lab/test-dnssec.sh:ro
+      - root_state:/var/lib/bind
+      - root_trust:/trust-anchor:ro
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.10
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 . DNSKEY +short | grep -q ."]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  tld:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
+    command: []
+    environment:
+      ZONE_FILE: db.test
+    volumes:
+      - ./tld/named.conf:/etc/bind/named.conf:ro
+      - ./tld/db.test:/opt/lab/base.zone:ro
+      - ./tld/registrar.key:/opt/lab/registrar.key:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - tld_state:/var/lib/bind
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.11
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 test. DNSKEY +short | grep -q ."]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  provider:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
+    command: []
+    environment:
+      ZONE_FILE: db.victim.test
+    volumes:
+      - ./provider/named.conf:/etc/bind/named.conf:ro
+      - ./provider/db.victim.test:/opt/lab/base.zone:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - provider_state:/var/lib/bind
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.12
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 victim.test. DNSKEY +short | grep -q ."]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  attacker:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    command: ["-g", "-c", "/etc/bind/named.conf"]
+    volumes:
+      - ./attacker/named.conf:/etc/bind/named.conf:ro
+      - ./attacker/db.victim.test:/etc/bind/zones/db.victim.test:ro
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.13
+    restart: "no"
+
+  dnssec-setup:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/lab/bootstrap-dnssec.sh"]
+    command: []
+    depends_on:
+      root:
+        condition: service_healthy
+      tld:
+        condition: service_healthy
+      provider:
+        condition: service_healthy
+    volumes:
+      - ./scripts/bootstrap-dnssec.sh:/opt/lab/bootstrap-dnssec.sh:ro
+      - ./root/bootstrap.key:/opt/lab/root-bootstrap.key:ro
+      - ./tld/registrar.key:/opt/lab/registrar.key:ro
+      - root_trust:/trust-anchor
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.15
+    restart: "no"
+
+  unbound:
+    image: mvance/unbound:1.22.0@sha256:76906da36d1806f3387338f15dcf8b357c51ce6897fb6450d6ce010460927e90
+    depends_on:
+      dnssec-setup:
+        condition: service_completed_successfully
+      attacker:
+        condition: service_started
+    volumes:
+      - ./unbound/unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
+      - ./unbound/root.hints:/opt/unbound/etc/unbound/root.hints:ro
+      - root_trust:/opt/unbound/etc/unbound/private-root:ro
+    healthcheck:
+      test: ["CMD-SHELL", "drill @127.0.0.1 www.victim.test A | grep -q '192.0.2.10'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.14
+    restart: "no"
+
+networks:
+  dns_lab:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  root_state:
+  tld_state:
+  provider_state:
+  root_trust:
+
