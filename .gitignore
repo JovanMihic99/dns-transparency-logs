@@ -62,3 +62,4 @@ events.jsonl
 collector/data/
 collector_state.json
 preannouncements.json
+.env
