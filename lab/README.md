@@ -10,8 +10,8 @@ The validated path is:
 
 The attacker remains separate and serves an independently signed synthetic copy
 of `victim.test.`. The mock-registrar scenario can deliberately switch the
-parent NS and DS records between the provider and attacker. Automatic rollover
-scenarios are not implemented yet.
+parent NS and DS records between the provider and attacker. The lab also has
+legitimate direct-registrar and CDS-driven KSK rollover scenarios.
 
 ## What persists
 
@@ -271,5 +271,18 @@ to a cryptographically retired predecessor:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\reset-ksk-rollover.ps1
+```
+
+# Scenario 4: CDS-driven rollover
+
+Scenario 4 validates child CDS cryptographically before changing the parent DS,
+maintains an observable double-DS overlap, and preserves `AD=true` throughout.
+See [`scenarios/cds-rollover/README.md`](../scenarios/cds-rollover/README.md) for
+the architecture, PowerShell demonstration, diagnostics, and safe recovery.
+
+Run the complete test from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-cds-rollover.ps1
 ```
 

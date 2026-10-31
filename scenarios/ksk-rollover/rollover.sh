@@ -29,6 +29,11 @@ parent_tags() {
     dig "@$tld" "$zone" DS +short | awk '{print $1}' | sort -n -u
 }
 
+cds_tags() {
+    dig "@$provider" "$zone" CDS +short |
+        awk '$2 == 13 && $3 == 2 {print $1}' | sort -n -u
+}
+
 signature_tags() {
     covered=$1
     dig "@$provider" "$zone" "$covered" +dnssec +noall +answer |
@@ -136,6 +141,33 @@ wait_for_only_new_key() {
         sleep 1
     done
     fail "Timed out waiting for old DNSKEY $OLD_TAG to retire"
+}
+
+wait_for_cds_tags() {
+    expected=$1
+    attempts=0
+    while [ "$attempts" -lt 120 ]; do
+        actual=$(cds_tags | csv)
+        if [ "$actual" = "$expected" ] &&
+           dig "@$provider" "$zone" CDS +dnssec +noall +answer |
+               grep -Eq '[[:space:]]RRSIG[[:space:]]+CDS[[:space:]]'; then
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+    fail "Timed out waiting for signed CDS key tags $expected"
+}
+
+set_key_goal_and_ds() {
+    key_tag=$1
+    goal=$2
+    ds_state=$3
+    key=$(key_file "$key_tag")
+    [ -f "$key" ] || fail "Missing key file $key"
+    dnssec-settime -s -g "$goal" -d "$ds_state" now "$key" >/dev/null
+    chown bind:bind "${key%.key}.key" "${key%.key}.private" "${key%.key}.state"
+    rndc_provider loadkeys "$zone"
 }
 
 wait_for_old_zone_signing_to_stop() {
@@ -286,6 +318,19 @@ begin() {
     echo "NEW_TAG=$NEW_TAG"
 }
 
+resume_begin() {
+    load_state
+    [ "$PHASE" = "baseline" ] || fail "resume-begin requires phase baseline; found $PHASE"
+    [ "$NEW_TAG" -eq 0 ] || fail "baseline state already contains successor $NEW_TAG"
+    wait_for_two_keys
+    wait_for_signature DNSKEY "$OLD_TAG"
+    save_state new-key-published
+    assert_ad
+    record_state recovered-new-key-published
+    echo "OLD_TAG=$OLD_TAG"
+    echo "NEW_TAG=$NEW_TAG"
+}
+
 ack_published() {
     load_state
     parent=$(parent_tags)
@@ -324,6 +369,31 @@ ack_withdrawn() {
     record_state complete
 }
 
+publish_cds_both() {
+    load_state
+    [ "$PHASE" = "new-key-published" ] || fail "CDS overlap requires phase new-key-published; found $PHASE"
+    # BIND 9.18's automatic CSK rollover normally replaces old CDS with new
+    # CDS at one KASP event. For the observable RFC 7344 overlap, keep the
+    # predecessor's goal and DS state present while the successor CDS exists.
+    # BIND remains the component that generates and signs the CDS RRset.
+    set_key_goal_and_ds "$OLD_TAG" OMNIPRESENT OMNIPRESENT
+    expected=$(printf '%s\n%s\n' "$OLD_TAG" "$NEW_TAG" | sort -n | csv)
+    wait_for_cds_tags "$expected"
+    assert_ad
+    record_state cds-old-and-new
+    echo "Published signed CDS for old key $OLD_TAG and new key $NEW_TAG."
+}
+
+publish_cds_new() {
+    load_state
+    [ "$PHASE" = "new-key-active" ] || fail "New-only CDS requires phase new-key-active; found $PHASE"
+    set_key_goal_and_ds "$OLD_TAG" HIDDEN UNRETENTIVE
+    wait_for_cds_tags "$NEW_TAG"
+    assert_ad
+    record_state cds-new-only
+    echo "Published signed CDS for new key $NEW_TAG only."
+}
+
 status() {
     if [ -s "$state_file" ]; then
         load_state
@@ -360,13 +430,16 @@ reconcile() {
 
 case "${1:-}" in
     begin) begin ;;
+    resume-begin) resume_begin ;;
     acknowledge-published) ack_published ;;
     acknowledge-withdrawn) ack_withdrawn ;;
+    publish-cds-both) publish_cds_both ;;
+    publish-cds-new) publish_cds_new ;;
     status) status ;;
     old-tag) load_state; echo "$OLD_TAG" ;;
     new-tag) load_state; echo "$NEW_TAG" ;;
     events) [ -f "$events_file" ] && cat "$events_file" || true ;;
     phase) if [ -s "$state_file" ]; then load_state; echo "$PHASE"; else echo not-started; fi ;;
     reconcile) reconcile ;;
-    *) fail "Usage: rollover.sh {begin|acknowledge-published|acknowledge-withdrawn|status|old-tag|new-tag|events|phase|reconcile}" ;;
+    *) fail "Usage: rollover.sh {begin|resume-begin|publish-cds-both|acknowledge-published|publish-cds-new|acknowledge-withdrawn|status|old-tag|new-tag|events|phase|reconcile}" ;;
 esac

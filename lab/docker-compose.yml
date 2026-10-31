@@ -115,6 +115,28 @@ services:
     networks:
       - dns_lab
 
+  cds-sync:
+    profiles: ["tools"]
+    build:
+      context: ../scenarios
+      dockerfile: cds-rollover/Dockerfile
+    image: lokey/cds-sync:1.0
+    environment:
+      TSIG_KEY_FILE: /run/secrets/registrar.key
+      ROOT_TRUST_ANCHOR: /trust-anchor/root.key
+    volumes:
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+      - root_trust:/trust-anchor:ro
+    depends_on:
+      root:
+        condition: service_healthy
+      tld:
+        condition: service_healthy
+      provider:
+        condition: service_healthy
+    networks:
+      - dns_lab
+
   ksk-rollover:
     profiles: ["tools"]
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
