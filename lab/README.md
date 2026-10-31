@@ -286,3 +286,55 @@ Run the complete test from the repository root:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-cds-rollover.ps1
 ```
 
+## Scenario 1: legitimate ZSK-only rollover
+
+Scenario 1 temporarily replaces only the provider container with an isolated
+split KSK/ZSK signing environment. It retains the parent-trusted CSK public and
+private key as the KSK, generates independent ZSKs, and leaves the shared
+`provider_state` volume untouched. Parent DS and NS records do not change.
+
+Run the complete Scenario 1 test from the repository root:
+
+```powershell
+docker compose -p lab -f .\lab\docker-compose.yml up -d
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-zsk-rollover.ps1
+```
+
+The test checks old/new ZSK publication and signature overlap, exact KSK
+identity, unchanged parent DS/NS, measured TTL cache safety, and Unbound
+`AD=true` at every phase. It restores the original CSK provider even when a
+test fails. For safe manual recovery:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\reset-zsk-rollover.ps1
+```
+
+Do not remove either provider volume. See
+[`scenarios/zsk-rollover/README.md`](../scenarios/zsk-rollover/README.md) for
+the architecture, phase commands, observation output, and rollback reasoning.
+
+## Scenario 3: legitimate Double-DS KSK rollover
+
+Scenario 3 uses the existing CSK rollover and TSIG registrar infrastructure,
+but independently proves an observable parent DS overlap: OLD only, exactly
+OLD+NEW, then NEW only. It derives exact DS RDATA from an authenticated child
+DNSKEY response and requires fresh Unbound `AD=true` validation throughout.
+
+Run the complete PowerShell test from the repository root:
+
+```powershell
+docker compose -f .\lab\docker-compose.yml up -d
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-double-ds-rollover.ps1 -ObservationDurationSeconds 5
+```
+
+For conservative recovery after interruption:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\reset-double-ds-rollover.ps1 -ObservationDurationSeconds 5
+```
+
+Recovery completes toward the authenticated successor; it never deletes
+volumes, forces ambiguous state, or restores a retired predecessor. See
+[`scenarios/double-ds-rollover/README.md`](../scenarios/double-ds-rollover/README.md)
+for phases, safety checks, diagnostics, and timing limitations.
+

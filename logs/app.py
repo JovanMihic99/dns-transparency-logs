@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from flask import Flask, jsonify, request, abort
+from flask import Flask, jsonify, request, abort, render_template, render_template, render_template
 
 from lokey.store import (
     append_event,
@@ -9,7 +9,12 @@ from lokey.store import (
     signed_tree_head,
     proof_for,
     consistency_proof_for,
+    read_tree_heads,
+    canonical_observation,
 )
+
+from lokey.merkle import leaf_hash
+from lokey.signing import verify_tree_head
 
 app = Flask(__name__)
 
@@ -26,6 +31,90 @@ CHANGE_TYPES = {
 
 DNS_FIELDS = {"ns", "ds", "dnskey", "cds"}
 
+
+@app.get("/")
+def dashboard():
+    return render_template("index.html")
+
+
+@app.get("/api/dashboard")
+def dashboard_data():
+    events = read_events()
+    assessments = read_assessments()
+
+    # Join assessments to observations using their Merkle leaf hashes.
+    assessment_map = {
+        item["leaf_hash"]: item["assessment"]
+        for item in assessments
+    }
+
+    timeline = []
+
+    for index, observation in enumerate(events):
+        digest = leaf_hash(
+            canonical_observation(observation)
+        ).hex()
+
+        assessment = assessment_map.get(digest, {})
+
+        timeline.append({
+            "index": index,
+            "observation": observation,
+            "leaf_hash": digest,
+            "assessment": assessment,
+        })
+
+    risk_counts = {
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "unknown": 0,
+    }
+
+    for item in timeline:
+        risk = item["assessment"].get("risk", "unknown").lower()
+
+        if risk not in risk_counts:
+            risk = "unknown"
+
+        risk_counts[risk] += 1
+
+    tree_heads = read_tree_heads()
+
+    latest_tree_head = None
+
+    if tree_heads:
+        latest_tree_head = tree_heads[-1]
+        latest_tree_head = {
+            **latest_tree_head,
+            "signature_valid": verify_tree_head(latest_tree_head),
+        }
+
+    return jsonify({
+        "stats": {
+            "total_events": len(events),
+            "total_assessments": len(assessments),
+            "risk_counts": risk_counts,
+            "tree_size": len(events),
+            "tree_head_count": len(tree_heads),
+        },
+        "latest_event": timeline[-1] if timeline else None,
+        "latest_tree_head": latest_tree_head,
+        "events": timeline,
+    })
+
+
+@app.get("/api/tree-heads")
+def historical_tree_heads():
+    heads = read_tree_heads()
+
+    return jsonify([
+        {
+            **head,
+            "signature_valid": verify_tree_head(head),
+        }
+        for head in reversed(heads)
+    ])
 
 def validate_event(body):
     if not isinstance(body, dict):

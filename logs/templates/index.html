@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoKey | DNS Transparency Monitor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-icon">L</div>
+            <div>
+                <h1>LoKey</h1>
+                <span>DNS TRANSPARENCY MONITOR</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="live-dot"></span>
+            <span id="connection">CONNECTING</span>
+            <span class="separator">|</span>
+            <span id="last-updated">Waiting for data</span>
+        </div>
+    </header>
+
+    <main>
+        <section class="page-heading">
+            <div>
+                <p class="eyebrow">SECURITY OVERVIEW</p>
+                <h2>DNS Event Monitor</h2>
+                <p class="subtitle">Transparent, verifiable DNS change detection.</p>
+            </div>
+            <button id="refresh-button" onclick="loadDashboard()">
+                ↻ Refresh data
+            </button>
+        </section>
+
+        <section class="stats-grid">
+            <article class="stat-card">
+                <span class="stat-label">TOTAL EVENTS</span>
+                <strong id="total-events">—</strong>
+                <span class="stat-note">Recorded observations</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-label">HIGH RISK</span>
+                <strong id="high-risk" class="red">—</strong>
+                <span class="stat-note">High-risk assessments</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-label">MEDIUM RISK</span>
+                <strong id="medium-risk" class="yellow">—</strong>
+                <span class="stat-note">Medium-risk assessments</span>
+            </article>
+            <article class="stat-card">
+                <span class="stat-label">LOW RISK</span>
+                <strong id="low-risk" class="green">—</strong>
+                <span class="stat-note">Low-risk assessments</span>
+            </article>
+        </section>
+
+        <section class="content-grid">
+            <article class="panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">MONITORING</p>
+                        <h3>Event timeline</h3>
+                    </div>
+                    <span id="event-count" class="pill">0 EVENTS</span>
+                </div>
+                <div id="timeline" class="timeline">
+                    <div class="empty-state">
+                        <span class="empty-icon">◎</span>
+                        <h4>No events recorded</h4>
+                        <p>DNS observations will appear here when received by the collector.</p>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="side-column">
+                <article class="panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">CRYPTOGRAPHIC INTEGRITY</p>
+                            <h3>Merkle tree</h3>
+                        </div>
+                        <span class="status-icon">◆</span>
+                    </div>
+                    <div class="integrity-row">
+                        <span>Tree size</span>
+                        <strong id="tree-size">0</strong>
+                    </div>
+                    <div class="integrity-row">
+                        <span>Tree heads recorded</span>
+                        <strong id="tree-head-count">0</strong>
+                    </div>
+                    <div class="integrity-row">
+                        <span>Latest signature</span>
+                        <strong id="signature-status">—</strong>
+                    </div>
+                    <div class="hash-box">
+                        <span>ROOT HASH</span>
+                        <code id="root-hash">No tree head available</code>
+                    </div>
+                </article>
+
+                <article class="panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">ASSESSMENT ENGINE</p>
+                            <h3>Risk distribution</h3>
+                        </div>
+                    </div>
+                    <div class="risk-bar">
+                        <div id="bar-high" class="bar-high"></div>
+                        <div id="bar-medium" class="bar-medium"></div>
+                        <div id="bar-low" class="bar-low"></div>
+                    </div>
+                    <div class="legend">
+                        <span><i class="dot red-bg"></i>High</span>
+                        <span><i class="dot yellow-bg"></i>Medium</span>
+                        <span><i class="dot green-bg"></i>Low</span>
+                    </div>
+                    <p class="muted small" id="assessment-count">0 assessments recorded</p>
+                </article>
+            </aside>
+        </section>
+
+        <section class="panel latest-panel">
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">LATEST OBSERVATION</p>
+                    <h3>Event details</h3>
+                </div>
+            </div>
+            <div id="latest-event" class="latest-content">
+                <p class="muted">Waiting for the first DNS observation.</p>
+            </div>
+        </section>
+
+        <footer>
+            <span>LoKey DNS Transparency</span>
+            <span>Verifiable observations · Signed tree heads · Risk assessment</span>
+        </footer>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
