@@ -2,6 +2,7 @@
 """Append-only JSONL event store and signed tree-head support."""
 
 from __future__ import annotations
+from .consistency import consistency_proof
 
 import json
 import os
@@ -122,4 +123,26 @@ def proof_for(index: int) -> dict:
             h.hex() for h in inclusion_proof(leaves, index)
         ],
         "root_hash": tree_hash(leaves).hex(),
+    }
+def consistency_proof_for(old_size: int) -> dict:
+    """Build a proof that the current tree extends an older tree."""
+    events = read_events()
+    leaves = _leaves(events)
+
+    new_size = len(leaves)
+
+    if old_size < 0 or old_size > new_size:
+        raise ValueError("Invalid old tree size")
+
+    old_root = tree_hash(leaves[:old_size])
+    new_root = tree_hash(leaves)
+
+    proof = consistency_proof(old_size, new_size, leaves)
+
+    return {
+        "old_tree_size": old_size,
+        "new_tree_size": new_size,
+        "old_root_hash": old_root.hex(),
+        "new_root_hash": new_root.hex(),
+        "consistency_path": [h.hex() for h in proof],
     }
