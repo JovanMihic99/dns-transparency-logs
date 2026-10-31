@@ -136,6 +136,15 @@ def wait_for_parent(target: Target) -> None:
     raise RegistrarError(f"Timed out waiting for the TLD to publish and sign the {target.name} delegation")
 
 
+def wait_for_parent_ds(expected_ds: list[str]) -> None:
+    for _ in range(60):
+        _, ds_text, ds_signed = parent_state()
+        if ds_text == expected_ds and ds_signed:
+            return
+        time.sleep(0.5)
+    raise RegistrarError("Timed out waiting for the TLD to publish and sign the requested provider DS set")
+
+
 def apply_target(target: Target) -> None:
     secret = parse_tsig_secret()
     keyring = dns.tsigkeyring.from_text({TSIG_NAME: secret})
@@ -165,6 +174,43 @@ def apply_target(target: Target) -> None:
     wait_for_parent(target)
     print(f"Parent delegation now points to the {target.name} and has a matching signed DS.")
     print("Restart Unbound (or wait for caches to expire) before checking the recursive answer.")
+
+
+def sync_provider_ds(key_tags: list[int] | None) -> None:
+    provider_ds = derive_ds(TARGETS["provider"])
+    if key_tags:
+        requested = set(key_tags)
+        selected = [record for record in provider_ds if record.key_tag in requested]
+        found = {record.key_tag for record in selected}
+        missing = sorted(requested - found)
+        if missing:
+            raise RegistrarError(f"Provider does not publish DNSKEY tag(s): {', '.join(map(str, missing))}")
+    else:
+        selected = provider_ds
+
+    expected = sorted(record.to_text() for record in selected)
+    secret = parse_tsig_secret()
+    keyring = dns.tsigkeyring.from_text({TSIG_NAME: secret})
+    update = dns.update.Update(
+        TLD_ZONE,
+        keyring=keyring,
+        keyname=TSIG_NAME,
+        keyalgorithm=dns.tsig.HMAC_SHA256,
+    )
+    update.delete("victim", dns.rdatatype.DS)
+    for ds_record in selected:
+        update.add("victim", TTL, ds_record)
+
+    try:
+        response = dns.query.tcp(update, TLD_SERVER, timeout=5)
+    except dns.exception.DNSException as exc:
+        raise RegistrarError(f"Provider DS update failed: {exc}") from exc
+    if response.rcode() != dns.rcode.NOERROR:
+        raise RegistrarError(f"TLD rejected the provider DS update: {dns.rcode.to_text(response.rcode())}")
+
+    wait_for_parent_ds(expected)
+    tags = ", ".join(str(record.key_tag) for record in selected)
+    print(f"Parent now publishes signed provider DS key tag(s): {tags}.")
 
 
 def unbound_state() -> tuple[str, bool, str]:
@@ -219,8 +265,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("status", "hijack", "restore", "unauthorized-test"),
+        choices=("status", "hijack", "restore", "unauthorized-test", "sync-provider-ds"),
         help="registrar action to perform",
+    )
+    parser.add_argument(
+        "--key-tag",
+        action="append",
+        type=int,
+        help="with sync-provider-ds, publish only the selected provider DNSKEY tag; repeat as needed",
     )
     args = parser.parse_args()
 
@@ -231,6 +283,9 @@ def main() -> int:
         return 0
     if args.command == "restore":
         apply_target(TARGETS["provider"])
+        return 0
+    if args.command == "sync-provider-ds":
+        sync_provider_ds(args.key_tag)
         return 0
     return unauthorized_test()
 
