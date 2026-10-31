@@ -1,0 +1,9 @@
+$ORIGIN test.
+$TTL 30
+@             IN SOA ns.test. hostmaster.test. 1 30 30 300 30
+@             IN NS  ns.test.
+ns            IN A   10.53.0.11
+ns1.provider  IN A   10.53.0.12
+ns1.attacker  IN A   10.53.0.13
+victim        IN NS  ns1.attacker.test.
+victim        IN DS  47477 13 2 ddcbc5ad236baea7ba40e7aa0801bad3bdf161bd3f45ef76538b4e5afbfcfde0
