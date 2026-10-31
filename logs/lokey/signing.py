@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-
+import os
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-DATA_DIR = Path("data")
+DATA_DIR = Path(os.getenv("LOKEY_DATA_DIR", "data"))
 PRIVATE_KEY_FILE = DATA_DIR / "log_ed25519_private.pem"
 PUBLIC_KEY_FILE = DATA_DIR / "log_ed25519_public.pem"
 
