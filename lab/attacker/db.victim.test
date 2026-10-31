@@ -1,13 +1,12 @@
 $TTL 30
-@  IN SOA ns.attacker.victim.test. hostmaster.attacker.victim.test. (
+@  IN SOA ns.attacker.test. hostmaster.attacker.victim.test. (
        2026103101 ; serial
        30         ; refresh
        30         ; retry
        120        ; expire
        30         ; negative cache TTL
 )
-         IN NS  ns.attacker.victim.test.
-         IN A   203.0.113.66
-ns.attacker IN A   172.30.0.13
-www      IN A   203.0.113.66
+    IN NS  ns.attacker.test.
+    IN A   192.0.2.66
+www IN A   192.0.2.66
 

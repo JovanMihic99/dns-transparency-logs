@@ -8,14 +8,15 @@ The validated path is:
 
 `Unbound -> private root (.) -> test. -> victim.test. provider`
 
-The attacker remains separate and serves an unsigned synthetic copy of
-`victim.test.`. No hijack, registrar attack, or automatic rollover scenario is
-implemented yet.
+The attacker remains separate and serves an independently signed synthetic copy
+of `victim.test.`. The mock-registrar scenario can deliberately switch the
+parent NS and DS records between the provider and attacker. Automatic rollover
+scenarios are not implemented yet.
 
 ## What persists
 
 Docker named volumes store each signed authority's DNSSEC keys, journal, and
-signed-zone state. A fourth volume stores Unbound's public private-root trust
+signed-zone state. A separate volume stores Unbound's public private-root trust
 anchor. `docker compose stop`, `start`, `restart`, and ordinary `down`/`up`
 cycles preserve these identities.
 
@@ -142,4 +143,58 @@ safer DNSKEY, signature, publication, and rollover timing values.
 Unbound has only the simulated root hints and the generated public DNSKEY for
 the private root. No real root hints, public trust anchor, forwarding server, or
 fallback resolver is configured.
+
+## Mock registrar and signed hijack demonstration
+
+The mock registrar is a Python/dnspython CLI under `../scenarios/registrar`.
+It derives DS records from live child DNSKEYs and sends narrowly authorized,
+TSIG-signed updates to the `test.` authority. It never contacts real DNS.
+
+Build the registrar image once after downloading the pinned base image and
+Python dependency:
+
+```powershell
+docker compose build registrar
+```
+
+Show the current delegation, signed-DS match, and recursive result:
+
+```powershell
+docker compose run --rm registrar status
+```
+
+Switch the parent delegation and DS to the independently signed attacker, then
+restart Unbound as a controlled cache flush:
+
+```powershell
+docker compose run --rm registrar hijack
+docker compose restart unbound
+docker compose exec root dig '@172.30.0.14' www.victim.test. A +dnssec
+docker compose run --rm registrar status
+```
+
+The answer must be `192.0.2.66` and include the AD flag. AD is expected because
+the parent now publishes the attacker's valid DS; this is an authorized but
+malicious registrar change, not a DNSSEC cryptographic failure.
+
+Restore the legitimate provider and flush the resolver cache again:
+
+```powershell
+docker compose run --rm registrar restore
+docker compose restart unbound
+docker compose exec root dig '@172.30.0.14' www.victim.test. A +dnssec
+docker compose run --rm registrar status
+```
+
+The restored answer must be `192.0.2.10` with AD.
+
+Run the complete baseline -> hijack -> restore regression, including unsigned
+UPDATE rejection, attacker signing/key persistence, DS matching, and AD checks:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test-registrar-hijack.ps1
+```
+
+The regression restores the provider in a `finally` block even when a check
+fails. Do not interrupt it while the restoration message is displayed.
 

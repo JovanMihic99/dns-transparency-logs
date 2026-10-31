@@ -73,14 +73,46 @@ services:
 
   attacker:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
-    command: ["-g", "-c", "/etc/bind/named.conf"]
+    entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
+    command: []
+    environment:
+      ZONE_FILE: db.victim.test
     volumes:
       - ./attacker/named.conf:/etc/bind/named.conf:ro
-      - ./attacker/db.victim.test:/etc/bind/zones/db.victim.test:ro
+      - ./attacker/db.victim.test:/opt/lab/base.zone:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - attacker_state:/var/lib/bind
     networks:
       dns_lab:
         ipv4_address: 172.30.0.13
     restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 victim.test. DNSKEY +short | grep -q ."]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  registrar:
+    profiles: ["tools"]
+    build:
+      context: ../scenarios/registrar
+    image: lokey/mock-registrar:1.0
+    environment:
+      TSIG_KEY_FILE: /run/secrets/registrar.key
+    volumes:
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+    depends_on:
+      tld:
+        condition: service_healthy
+      provider:
+        condition: service_healthy
+      attacker:
+        condition: service_healthy
+      unbound:
+        condition: service_healthy
+    networks:
+      - dns_lab
 
   dnssec-setup:
     image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
@@ -115,7 +147,7 @@ services:
       - ./unbound/root.hints:/opt/unbound/etc/unbound/root.hints:ro
       - root_trust:/opt/unbound/etc/unbound/private-root:ro
     healthcheck:
-      test: ["CMD-SHELL", "drill @127.0.0.1 www.victim.test A | grep -q '192.0.2.10'"]
+      test: ["CMD-SHELL", "drill @127.0.0.1 www.victim.test A | grep -Eq '192[.]0[.]2[.](10|66)'"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -137,5 +169,6 @@ volumes:
   root_state:
   tld_state:
   provider_state:
+  attacker_state:
   root_trust:
 
