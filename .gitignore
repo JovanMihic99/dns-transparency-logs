@@ -48,4 +48,8 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
-   
+
+# My data files
+logs/data/log_ed25519_private.pem
+logs/data/events.jsonl
+logs/data/tree_heads.jsonllogs/data/events.jsonl
