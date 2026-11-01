@@ -338,3 +338,40 @@ volumes, forces ambiguous state, or restores a retired predecessor. See
 [`scenarios/double-ds-rollover/README.md`](../scenarios/double-ds-rollover/README.md)
 for phases, safety checks, diagnostics, and timing limitations.
 
+## Scenario 5: legitimate provider migration
+
+Scenario 5 adds an independent legitimate authority at `172.30.0.16` with its
+own persistent DNSSEC identity. It preserves `192.0.2.10`, bridges resolver
+caches with an OLD+NEW parent DS interval, pre-announces the exact destination
+NS and DS state to the collector, switches NS without a dual-NS interval, and
+retires OLD DS only after measured cache-safety holds.
+
+The collector must be running and the lab must first show the legitimate
+provider baseline. From the repository root:
+
+```powershell
+$compose = @(
+  '-f', '.\lab\docker-compose.yml',
+  '-f', '.\scenarios\provider-migration\docker-compose.yml',
+  '--profile', 'tools'
+)
+
+docker compose @compose build provider-migration
+docker compose @compose up -d --no-deps --force-recreate tld
+docker compose @compose up -d new-provider
+docker compose @compose run --rm --no-deps provider-migration status
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\test-provider-migration.ps1
+```
+
+For conservative reverse migration after interruption:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\lab\reset-provider-migration.ps1
+```
+
+Do not use `docker compose down -v`. Both provider signing volumes and the
+migration metadata volume are required for identity and recovery continuity.
+See
+[`scenarios/provider-migration/README.md`](../scenarios/provider-migration/README.md)
+for the state machine, phase commands, collector behavior, and failure modes.
+
