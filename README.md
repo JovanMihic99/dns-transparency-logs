@@ -214,8 +214,9 @@ collector  ->  scoring  ->  log (Merkle tree)  ->  dashboard + alerts
 3. **Log.** The event is POSTed to the log, which appends the observation as a Merkle
    leaf and serves signed tree heads and proofs. The collector also keeps a local
    backup and a state file.
-4. **Alert.** The dashboard shows every event. Telegram alerts for high-risk events can
-   be switched on (see [Configuration](#configuration)).
+4. **Alert.** The dashboard shows every event. Telegram alerts go out for high-risk
+   events only (switch them on under [Configuration](#configuration)); medium and low
+   events appear on the dashboard without an alert.
 
 Three Compose projects run side by side. The lab network is internal, so the lab DNS
 servers have no internet route.
