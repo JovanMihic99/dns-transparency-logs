@@ -1,0 +1,36 @@
+services:
+  provider:
+    volumes:
+      - ../scenarios/unsigned-ns-change/unsigned.named.conf:/etc/bind/named.conf:ro
+      - ../scenarios/unsigned-ns-change/db.old:/opt/lab/base.zone:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - unsigned_old_state:/var/lib/bind
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 www.victim.test. A +short | grep -q 192.0.2.10"]
+  unsigned-new:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
+    command: []
+    environment: { ZONE_FILE: db.victim.test }
+    volumes:
+      - ../scenarios/unsigned-ns-change/unsigned.named.conf:/etc/bind/named.conf:ro
+      - ../scenarios/unsigned-ns-change/db.new:/opt/lab/base.zone:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - unsigned_new_state:/var/lib/bind
+    networks:
+      dns_lab: { ipv4_address: 172.30.0.17 }
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 www.victim.test. A +short | grep -q 192.0.2.66"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+  unsigned-change:
+    profiles: ["tools"]
+    build: { context: ../scenarios/unsigned-ns-change }
+    image: lokey/unsigned-change:1.0
+    volumes:
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+    networks: [dns_lab]
+volumes:
+  unsigned_old_state: { name: lab_unsigned_old_state }
+  unsigned_new_state: { name: lab_unsigned_new_state }

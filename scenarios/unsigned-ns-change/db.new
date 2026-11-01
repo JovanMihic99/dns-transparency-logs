@@ -1,0 +1,4 @@
+$TTL 30
+@ IN SOA ns.unsigned.test. hostmaster.victim.test. ( 2026110101 30 30 300 30 )
+@ IN NS ns.unsigned.test.
+www IN A 192.0.2.66
