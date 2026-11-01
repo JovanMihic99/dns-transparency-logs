@@ -419,20 +419,3 @@ python -m collector.run victim.test --log-url http://127.0.0.1:5000/events
 
 The host reaches the internal lab network (172.30.0.11) directly on Linux; this was
 verified during development.
-
-### Repository layout and team
-
-| Path | Contents | Owner |
-|---|---|---|
-| `lab/` | Lab Compose project (root, tld, provider, attacker, Unbound, `dnssec-setup`; tools `registrar`, `ksk-rollover`, `cds-sync`), test and reset scripts for every scenario (bash `.sh` and PowerShell `.ps1`) | P1 (bash ports: P2) |
-| `scenarios/` | Mock registrar (TSIG); KSK, CDS, ZSK and double-DS rollover drivers; DS removal, unsigned NS change and provider migration scenarios | P1 |
-| `collector/` | Snapshots and `diff()` (`snapshot.py`), polling loop (`run.py`), container, sample zones in `testdata/` | P2 |
-| `scoring/` | Scoring rules v1.1 (`rules.py`) | P2 |
-| `tests/` | Collector and scoring unit tests; `live_scenarios.sh` (LoKey end to end) | P2 |
-| `logs/` | Flask log API, Merkle tree, signing, consistency (`lokey/`), dashboard, `verify.py`, container, tests | P3 |
-
-- **P1:** lab, attack and rollover scenarios, demo.
-- **P2:** collector, diffs, scoring.
-- **P3:** Merkle log, signed tree heads, proofs, alerts, dashboard.
-
-`main` is the integration branch; each person merges their own branch into it.
