@@ -8,11 +8,11 @@ services:
     environment:
       ZONE_FILE: db.root
     volumes:
-      - ./root/named.conf:/etc/bind/named.conf:ro
-      - ./root/db.root:/opt/lab/base.zone:ro
-      - ./root/bootstrap.key:/opt/lab/bootstrap.key:ro
-      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
-      - ./test-dnssec.sh:/opt/lab/test-dnssec.sh:ro
+      - ./root/named.conf:/etc/bind/named.conf:ro,z
+      - ./root/db.root:/opt/lab/base.zone:ro,z
+      - ./root/bootstrap.key:/opt/lab/bootstrap.key:ro,z
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro,z
+      - ./test-dnssec.sh:/opt/lab/test-dnssec.sh:ro,z
       - root_state:/var/lib/bind
       - root_trust:/trust-anchor:ro
     networks:
@@ -33,10 +33,10 @@ services:
     environment:
       ZONE_FILE: db.test
     volumes:
-      - ./tld/named.conf:/etc/bind/named.conf:ro
-      - ./tld/db.test:/opt/lab/base.zone:ro
-      - ./tld/registrar.key:/opt/lab/registrar.key:ro
-      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - ./tld/named.conf:/etc/bind/named.conf:ro,z
+      - ./tld/db.test:/opt/lab/base.zone:ro,z
+      - ./tld/registrar.key:/opt/lab/registrar.key:ro,z
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro,z
       - tld_state:/var/lib/bind
     networks:
       dns_lab:
@@ -56,10 +56,10 @@ services:
     environment:
       ZONE_FILE: db.victim.test
     volumes:
-      - ./provider/named.conf:/etc/bind/named.conf:ro
-      - ./provider/db.victim.test:/opt/lab/base.zone:ro
-      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
-      - ./provider/rollover-control.key:/opt/lab/rollover-control.key:ro
+      - ./provider/named.conf:/etc/bind/named.conf:ro,z
+      - ./provider/db.victim.test:/opt/lab/base.zone:ro,z
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro,z
+      - ./provider/rollover-control.key:/opt/lab/rollover-control.key:ro,z
       - provider_state:/var/lib/bind
     networks:
       dns_lab:
@@ -79,9 +79,9 @@ services:
     environment:
       ZONE_FILE: db.victim.test
     volumes:
-      - ./attacker/named.conf:/etc/bind/named.conf:ro
-      - ./attacker/db.victim.test:/opt/lab/base.zone:ro
-      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - ./attacker/named.conf:/etc/bind/named.conf:ro,z
+      - ./attacker/db.victim.test:/opt/lab/base.zone:ro,z
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro,z
       - attacker_state:/var/lib/bind
     networks:
       dns_lab:
@@ -102,7 +102,7 @@ services:
     environment:
       TSIG_KEY_FILE: /run/secrets/registrar.key
     volumes:
-      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro,z
     depends_on:
       tld:
         condition: service_healthy
@@ -125,7 +125,7 @@ services:
       TSIG_KEY_FILE: /run/secrets/registrar.key
       ROOT_TRUST_ANCHOR: /trust-anchor/root.key
     volumes:
-      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro,z
       - root_trust:/trust-anchor:ro
     depends_on:
       root:
@@ -143,8 +143,8 @@ services:
     entrypoint: ["/bin/sh", "/opt/lab/rollover.sh"]
     command: ["status"]
     volumes:
-      - ../scenarios/ksk-rollover/rollover.sh:/opt/lab/rollover.sh:ro
-      - ./provider/rollover-control.key:/opt/lab/rollover-control.key:ro
+      - ../scenarios/ksk-rollover/rollover.sh:/opt/lab/rollover.sh:ro,z
+      - ./provider/rollover-control.key:/opt/lab/rollover-control.key:ro,z
       - provider_state:/provider-state
       - rollover_state:/state
     depends_on:
@@ -169,9 +169,9 @@ services:
       provider:
         condition: service_healthy
     volumes:
-      - ./scripts/bootstrap-dnssec.sh:/opt/lab/bootstrap-dnssec.sh:ro
-      - ./root/bootstrap.key:/opt/lab/root-bootstrap.key:ro
-      - ./tld/registrar.key:/opt/lab/registrar.key:ro
+      - ./scripts/bootstrap-dnssec.sh:/opt/lab/bootstrap-dnssec.sh:ro,z
+      - ./root/bootstrap.key:/opt/lab/root-bootstrap.key:ro,z
+      - ./tld/registrar.key:/opt/lab/registrar.key:ro,z
       - root_trust:/trust-anchor
     networks:
       dns_lab:
@@ -186,8 +186,8 @@ services:
       attacker:
         condition: service_started
     volumes:
-      - ./unbound/unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
-      - ./unbound/root.hints:/opt/unbound/etc/unbound/root.hints:ro
+      - ./unbound/unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro,z
+      - ./unbound/root.hints:/opt/unbound/etc/unbound/root.hints:ro,z
       - root_trust:/opt/unbound/etc/unbound/private-root:ro
     healthcheck:
       test: ["CMD-SHELL", "drill @127.0.0.1 www.victim.test A | grep -Eq '192[.]0[.]2[.](10|66)'"]
