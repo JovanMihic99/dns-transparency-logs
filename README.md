@@ -199,6 +199,37 @@ tested in `tests/test_scoring.py` with real ECDSA signatures built in memory.
 `sudo bash lab/test-dnssec-negative.sh` also checks that a wrong DS makes validation fail
 (SERVFAIL, no AD).
 
+## Watching more domains
+
+The collector watches the domains given as its arguments. In the lab that's only
+`victim.test`, set in [`collector/docker-compose.yml`](collector/docker-compose.yml):
+
+```yaml
+    command: ["victim.test"]
+```
+
+To watch more, list them all and recreate the collector:
+
+```yaml
+    command: ["victim.test", "shop.test"]
+```
+
+```bash
+cd collector && docker compose up -d && docker compose logs --tail 5 && cd ..
+```
+
+**Works when:** the `watching [...]` line lists every domain and each one gets a
+`[baseline]` line. A domain that only shows `[skip]` lines can't be reached.
+
+- All domains of one collector must be delegated from the same parent server
+  (`LOKEY_TLD_IP`, 172.30.0.11 in the lab). For another parent zone, run a second
+  collector.
+- In the lab, a new `.test` domain also needs a delegation in the lab's `.test` zone and
+  a server for its zone; see [`lab/README.md`](lab/README.md). The scenario scripts only
+  change `victim.test`.
+- History is kept per domain: a new domain starts with a baseline, existing ones keep
+  their state.
+
 ## How it works
 
 ```
