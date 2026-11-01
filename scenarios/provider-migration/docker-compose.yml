@@ -1,0 +1,58 @@
+services:
+  new-provider:
+    image: internetsystemsconsortium/bind9:9.18@sha256:1ffb29c718ee2540c5643c1e8166629a07bbd505f99107baae535e9f86eb7eef
+    entrypoint: ["/bin/sh", "/opt/lab/start-authority.sh"]
+    command: []
+    environment:
+      ZONE_FILE: db.victim.test
+    volumes:
+      - ../scenarios/provider-migration/provider.named.conf:/etc/bind/named.conf:ro
+      - ../scenarios/provider-migration/db.victim.test:/opt/lab/base.zone:ro
+      - ./scripts/start-authority.sh:/opt/lab/start-authority.sh:ro
+      - new_provider_state:/var/lib/bind
+    networks:
+      dns_lab:
+        ipv4_address: 172.30.0.16
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "dig @127.0.0.1 victim.test. DNSKEY +short | grep -q ."]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 5s
+
+  provider-migration:
+    profiles: ["tools"]
+    build:
+      context: ../scenarios/provider-migration
+    image: lokey/provider-migration:1.0
+    environment:
+      TSIG_KEY_FILE: /run/secrets/registrar.key
+      MIGRATION_STATE_FILE: /state/current.json
+      PREANNOUNCEMENTS_FILE: /app/data/preannouncements.json
+      COLLECTOR_STATE_FILE: /app/data/state.json
+      COLLECTOR_INTERVAL_SECONDS: ${LOKEY_COLLECTOR_INTERVAL_SECONDS:-10}
+      OBSERVATION_SECONDS: ${LOKEY_MIGRATION_OBSERVATION_SECONDS:-5}
+      UNBOUND_CONTROL_CONFIG: /run/unbound-control.conf
+    volumes:
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+      - ../scenarios/provider-migration/unbound-control.conf:/run/unbound-control.conf:ro
+      - provider_migration_state:/state
+    volumes_from:
+      - container:lokey-collector:rw
+    depends_on:
+      tld:
+        condition: service_healthy
+      provider:
+        condition: service_healthy
+      new-provider:
+        condition: service_healthy
+      unbound:
+        condition: service_healthy
+    network_mode: service:unbound
+
+volumes:
+  new_provider_state:
+    name: lab_new_provider_state
+  provider_migration_state:
+    name: lab_provider_migration_state

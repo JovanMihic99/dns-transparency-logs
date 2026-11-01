@@ -1,0 +1,12 @@
+services:
+  ds-removal:
+    profiles: ["tools"]
+    build:
+      context: ../scenarios/ds-removal
+    image: lokey/ds-removal:1.0
+    environment:
+      TSIG_KEY_FILE: /run/secrets/registrar.key
+    volumes:
+      - ./tld/registrar.key:/run/secrets/registrar.key:ro
+    networks:
+      - dns_lab
