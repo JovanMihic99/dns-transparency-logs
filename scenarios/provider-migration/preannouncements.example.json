@@ -1,0 +1,11 @@
+[
+  {
+    "domain": "victim.test",
+    "new_ns": ["ns.newprovider.test."],
+    "new_ds": [
+      "OLD_KEY_TAG 13 2 OLD_SHA256_DIGEST",
+      "NEW_KEY_TAG 13 2 NEW_SHA256_DIGEST"
+    ],
+    "valid_until": "REPLACE_WITH_FUTURE_UTC_TIMESTAMP"
+  }
+]
