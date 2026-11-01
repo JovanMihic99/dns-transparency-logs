@@ -17,13 +17,6 @@ try {
     $parent = Get-ParentSnapshot
 
     if ($child.Tags.Count -eq 1 -and $parent.Tags.Count -eq 1 -and $child.Tags[0] -eq $parent.Tags[0]) {
-        if ($metadata.Phase -eq 'new-key-active' -and $metadata.NewTag -eq $child.Tags[0]) {
-            # A late acknowledge-withdrawn timeout can leave OLD already absent
-            # while the shared controller has not restored the 30-second zone
-            # TTL or saved completion. Finish that idempotent tail before
-            # clearing metadata.
-            Complete-WithdrawnWithExtendedRecovery -OldTag $metadata.OldTag -NewTag $metadata.NewTag -InitialAttemptAlreadyFailed
-        }
         $stableTag = Assert-StableLiveState
         if ($metadata.Phase -ne 'not-started') { Invoke-Rollover 'reconcile' | Out-Null }
         Write-Host "Recovery complete: stable CSK/DS tag $stableTag."
@@ -110,13 +103,7 @@ try {
             if ($c.SignerTags -notcontains $newTag) { throw 'NEW DNSKEY signature disappeared during recovery' }
             Assert-ValidatedAddress 'recovery successor-only state'
         }
-        $oldBlock = Get-BindKeyBlock $oldTag
-        $partial = $oldBlock -match '(?m)^\s*- ds:\s+hidden\b'
-        if ($partial) {
-            Complete-WithdrawnWithExtendedRecovery -OldTag $oldTag -NewTag $newTag -InitialAttemptAlreadyFailed
-        } else {
-            Complete-WithdrawnWithExtendedRecovery -OldTag $oldTag -NewTag $newTag
-        }
+        Invoke-Rollover 'acknowledge-withdrawn' | Out-Null
     } else {
         throw "Parent DS state is ambiguous: $($parent.Tags -join ','). No recovery mutation was attempted."
     }

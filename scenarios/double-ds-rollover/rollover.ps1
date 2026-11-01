@@ -105,7 +105,7 @@ try {
             Assert-ValidatedAddress 'successor-only propagation hold'
         }
 
-    Complete-WithdrawnWithExtendedRecovery -OldTag $oldTag -NewTag $newTag
+    Invoke-Rollover 'acknowledge-withdrawn' | Out-Null
     $finalTag = Assert-StableLiveState
     if ($finalTag -ne $newTag) { throw "Completion stabilized on unexpected key $finalTag instead of $newTag" }
     Write-Host "PHASE complete: NEW=$newTag is the sole stable CSK and parent DS"
