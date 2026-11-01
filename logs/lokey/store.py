@@ -57,6 +57,9 @@ def append_event(event: dict) -> dict:
     observation = event["observation"]
     assessment = event["assessment"]
 
+    # The next zero-based Merkle leaf index.
+    event_index = len(read_events())
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     encoded = canonical_observation(observation)
@@ -84,6 +87,7 @@ def append_event(event: dict) -> dict:
         )
 
     return {
+        "index": event_index,
         "observation": observation,
         "leaf_hash": digest,
         "assessment": assessment,

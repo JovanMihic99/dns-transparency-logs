@@ -16,7 +16,14 @@ from lokey.store import (
 from lokey.merkle import leaf_hash
 from lokey.signing import verify_tree_head
 
+import logging
+
+from lokey.notifications import send_telegram_alert
+
 app = Flask(__name__)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 CHANGE_TYPES = {
     "NS_CHANGED",
@@ -225,7 +232,15 @@ def add_event():
     if error:
         abort(400, description=error)
 
-    return jsonify(append_event(body)), 201
+    result = append_event(body)
+
+    # Notification failure must never invalidate a stored event.
+    try:
+        send_telegram_alert(result)
+    except Exception:
+        logger.exception("Unexpected Telegram notification failure")
+
+    return jsonify(result), 201
 
 
 @app.get("/tree-head")
