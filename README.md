@@ -99,27 +99,21 @@ docker compose run --rm --no-deps registrar restore
 cd ..
 ```
 
+Automated version with all lab checks (restores at the end): `sudo bash lab/test-registrar-hijack.sh`.
+
 The restore **also scores high**. That's expected: the old key comes back with no
 fresh trail. To make it score low, pre-announce it (below).
 
 ### Double-KSK rollover (scenario 2): should stay quiet
 
-Wait about **25 seconds between commands**, so each step lands in its own collector poll.
-Every step should score **low**.
-
 ```bash
-cd lab
-docker compose run --rm ksk-rollover begin
-docker compose run --rm --no-deps registrar sync-provider-ds
-docker compose run --rm ksk-rollover acknowledge-published
-NEW_TAG=$(docker compose run --rm -T ksk-rollover new-tag)
-docker compose run --rm --no-deps registrar sync-provider-ds --key-tag "$NEW_TAG"
-docker compose run --rm ksk-rollover acknowledge-withdrawn
-docker compose run --rm ksk-rollover events
-cd ..
+sudo bash lab/test-ksk-rollover.sh 25
 ```
 
-More detail: "Scenario 2" in [`lab/README.md`](lab/README.md).
+**Expected:** every step scores **low** and no alert is sent. `25` waits 25 s between
+steps so each lands in its own collector poll. The script checks `AD=true` after every
+step and always leaves a stable key behind. Manual steps: "Scenario 2" in
+[`lab/README.md`](lab/README.md).
 
 ### Make a planned change score low (pre-announcement)
 
@@ -151,7 +145,8 @@ cd collector && docker compose up -d && cd ..
 - Keep the `.pem` files in `logs/data/`.
 - `git status` will show some `logs/data/` files as deleted. **Don't commit that.**
 - Moving `collector/data/state.json` resets the baseline and the quarantine history.
-- To recover an interrupted rollover, use the reset scripts in the scenario READMEs.
+- To recover an interrupted scenario, run its reset script, for example
+  `sudo bash lab/reset-ksk-rollover.sh` or `sudo bash lab/reset-ds-removal.sh`.
 
 ## Troubleshooting
 
@@ -162,37 +157,47 @@ cd collector && docker compose up -d && cd ..
 | Collector can't write to `collector/data` | Create the folder as your own user before starting; check `LOKEY_UID`/`LOKEY_GID` |
 | Provider unhealthy after upgrading an existing lab to the `lokey-rollover` policy | Stop the provider, delete only `db.victim.test.signed` and its `.jnl` from the `lab_provider_state` volume. **Keep `keys/`.** |
 | `acknowledge-withdrawn` fails with `Missing successor signature … TYPE65534` | BIND is still re-signing; it finishes the rollover on its own schedule |
-| Double-DS, CDS rollover or lab reset scripts don't run | They're PowerShell only (`lab/*.ps1`) |
+| A `lab/*.ps1` script won't run on Linux | Use its bash twin `lab/*.sh` (same name, same steps) |
 
 ### Known limitations
 
+- **Changes shorter than one poll can be missed.** The collector polls every 10 s. In lab
+  tests, a ~10 s registrar hijack and a few seconds of a wrong DS left no trace in the log.
+  Shorter polling narrows the gap; closing it needs registry change notifications or
+  Certificate Transparency cross-checks.
 - **Glue-only change not detected:** an attacker who keeps `ns.victim.test.` and only
   changes its glue address is not caught.
 - **Quarantine is permanent:** after a legitimate but unannounced migration (high), the
   new keys stay quarantined until the domain's state is reset. Pre-announce migrations.
+- **Scenarios 7 and 8 send a Telegram alert:** both remove the parent DS, which correctly
+  scores high. Set `TELEGRAM_ENABLED=false` in `logs/.env` for test runs if needed.
 - **`GET /tree-head` stores a new head on every call**, so the history fills up with
   heads of the same size.
 - **`verify.py` only checks tree-head signatures**, not inclusion or consistency proofs yet.
-- **`logs/README.md` shows an old event format** (flat `change`/`risk` keys). The log
-  only accepts the format in the reference below.
 - **No one-command demo yet:** `demo/run.sh` doesn't exist.
-- Scenarios 5a, 7 and 8 are on unmerged feature branches.
 
 ## Scenario status
 
-"Unit" means covered by `tests/test_scoring.py` with real ECDSA signatures built in memory.
+Every scenario in the spec runs live in the lab on Linux. Each `lab/test-*.sh` has a
+PowerShell twin (`lab/test-*.ps1`) and a reset script (`lab/reset-*.sh`) for interrupted
+runs. Run them from the repository root with the lab, log and collector up; pass `25`
+where shown so each step lands in its own collector poll. All scenarios are also unit
+tested in `tests/test_scoring.py` with real ECDSA signatures built in memory.
 
-| # | Scenario | Expected | Status |
+| # | Scenario | Run (Linux) | Live verdict |
 |---|---|---|---|
-| 1 | ZSK-only rollover | low | Lab script (PowerShell), unit. See [`scenarios/zsk-rollover/README.md`](scenarios/zsk-rollover/README.md) |
-| 2 | Double-KSK rollover | low at every step | **Live on Linux**, unit. See [above](#double-ksk-rollover-scenario-2-should-stay-quiet) |
-| 3 | Double-DS rollover | low | Lab script (PowerShell only), unit. See [`scenarios/double-ds-rollover/README.md`](scenarios/double-ds-rollover/README.md) |
-| 4 | CDS-driven rollover | low | `cds-sync` service + PowerShell driver, unit. See [`scenarios/cds-rollover/README.md`](scenarios/cds-rollover/README.md) |
-| 5a | Provider migration, not announced | high | Unit only (branch `feature/provider-migration`) |
-| 5b | Provider migration, pre-announced | low (high once expired) | Unit |
-| 6 | Registrar hijack | high | **Live on Linux**, unit. See [above](#registrar-hijack-scenario-6-should-alert) |
-| 7 | Parent DS removal | high | Unit only (branch `feature/ds-removal`) |
-| 8 | NS change on an unsigned domain | medium | Unit only (branch `feature/unsigned-ns-change`) |
+| 1 | ZSK-only rollover | `sudo bash lab/test-zsk-rollover.sh 25` | low (DNSKEY changes only; KSK and DS unchanged) |
+| 2 | Double-KSK rollover | `sudo bash lab/test-ksk-rollover.sh 25` | low at every step |
+| 3 | Double-DS rollover | `sudo bash lab/test-double-ds-rollover.sh 25` | low at every step |
+| 4 | CDS-driven rollover | `sudo bash lab/test-cds-rollover.sh 25 --skip-existing-regressions` | low at every step |
+| 5a | Provider migration, not announced | `bash tests/live_scenarios.sh` (unannounced NS+DS change) | high |
+| 5b | Provider migration, pre-announced | `sudo bash lab/test-provider-migration.sh` | low, in both directions |
+| 6 | Registrar hijack | `sudo bash lab/test-registrar-hijack.sh` (lab checks), `bash tests/live_scenarios.sh` (LoKey) | high + Telegram |
+| 7 | Parent DS removal | `sudo bash lab/test-ds-removal.sh` | high + Telegram |
+| 8 | NS change on an unsigned domain | `sudo bash lab/test-unsigned-ns-change.sh` | medium (its setup removes the DS: one high + Telegram) |
+
+`sudo bash lab/test-dnssec-negative.sh` also checks that a wrong DS makes validation fail
+(SERVFAIL, no AD).
 
 ## How it works
 
@@ -315,7 +320,7 @@ Check the stored tree-head signatures against the log's public key:
 cd logs && docker compose exec lokey python verify.py && cd ..
 ```
 
-Hashing scheme: [`logs/docs.md`](logs/docs.md).
+Hashing scheme: [`logs/lokey/merkle.py`](logs/lokey/merkle.py) (Certificate Transparency style, RFC 6962).
 
 ### Configuration
 
@@ -359,7 +364,7 @@ is ignored by Git and must never be committed. Point alerts only at the team's o
 |---|---|---|---|
 | Collector and scoring | `python -m pytest -q tests/` (repo root) | venv with `dnspython[dnssec]`, `pytest` | 19 passed |
 | Log | `cd logs && python -m pytest -q tests/` (must run from `logs/`) | `Flask`, `cryptography`, `pytest` | 11 passed |
-| Live scenarios | TODO (unverified): `tests/live_scenarios.sh` is not in the repository yet | lab, log and collector running | 5 passed, 0 failed |
+| Live scenarios | `bash tests/live_scenarios.sh` (repo root; uses sudo) | lab, log and collector running | 5 passed, 0 failed |
 
 One venv for both unit suites:
 
@@ -380,18 +385,18 @@ Don't install `logs/requirements.txt` into the same venv: it pins
 python -m collector.run victim.test --log-url http://127.0.0.1:5000/events
 ```
 
-TODO (unverified): the host reaching the internal lab network at 172.30.0.11 was
-reported working on Linux but not checked for this README.
+The host reaches the internal lab network (172.30.0.11) directly on Linux; this was
+verified during development.
 
 ### Repository layout and team
 
 | Path | Contents | Owner |
 |---|---|---|
-| `lab/` | Lab Compose project (root, tld, provider, attacker, Unbound, `dnssec-setup`; tools `registrar`, `ksk-rollover`, `cds-sync`), test and reset scripts | P1 |
-| `scenarios/` | Mock registrar (TSIG), KSK, CDS, ZSK and double-DS rollover drivers | P1 |
+| `lab/` | Lab Compose project (root, tld, provider, attacker, Unbound, `dnssec-setup`; tools `registrar`, `ksk-rollover`, `cds-sync`), test and reset scripts for every scenario (bash `.sh` and PowerShell `.ps1`) | P1 (bash ports: P2) |
+| `scenarios/` | Mock registrar (TSIG); KSK, CDS, ZSK and double-DS rollover drivers; DS removal, unsigned NS change and provider migration scenarios | P1 |
 | `collector/` | Snapshots and `diff()` (`snapshot.py`), polling loop (`run.py`), container, sample zones in `testdata/` | P2 |
 | `scoring/` | Scoring rules v1.1 (`rules.py`) | P2 |
-| `tests/` | Collector and scoring unit tests | P2 |
+| `tests/` | Collector and scoring unit tests; `live_scenarios.sh` (LoKey end to end) | P2 |
 | `logs/` | Flask log API, Merkle tree, signing, consistency (`lokey/`), dashboard, `verify.py`, container, tests | P3 |
 
 - **P1:** lab, attack and rollover scenarios, demo.
