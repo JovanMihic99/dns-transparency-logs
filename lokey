@@ -1,0 +1,154 @@
+
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+LAB="$ROOT/lab"
+
+# Load Docker permission handling only when Docker is needed.
+load_docker_helper() {
+    source "$ROOT/scripts/docker.sh"
+
+    if ! declare -F docker >/dev/null; then
+        echo "ERROR: Docker helper did not define the docker function." >&2
+        exit 1
+    fi
+
+    # Make the Docker wrapper available to child Bash scripts.
+    export -f docker
+
+    # Preserve configuration used by the wrapper.
+    [[ -v LOKEY_DOCKER_BIN ]] && export LOKEY_DOCKER_BIN
+    [[ -v LOKEY_DOCKER_USE_SUDO ]] && export LOKEY_DOCKER_USE_SUDO
+}
+
+declare -A SCENARIO_SCRIPTS=(
+    [cds-rollover]="test-cds-rollover.sh"
+    [double-ds-rollover]="test-double-ds-rollover.sh"
+    [ds-removal]="test-ds-removal.sh"
+    [ksk-rollover]="test-ksk-rollover.sh"
+    [provider-migration]="test-provider-migration.sh"
+    [registrar]="test-registrar-hijack.sh"
+    [unsigned-ns-change]="test-unsigned-ns-change.sh"
+    [zsk-rollover]="test-zsk-rollover.sh"
+)
+
+usage() {
+    cat <<EOF
+LoKey DNS Transparency Lab
+
+Usage:
+  ./lokey start
+  ./lokey stop
+  ./lokey restart
+  ./lokey test
+  ./lokey scenario <name>
+
+Available scenarios:
+  cds-rollover
+  double-ds-rollover
+  ds-removal
+  ksk-rollover
+  provider-migration
+  registrar
+  unsigned-ns-change
+  zsk-rollover
+EOF
+}
+
+run_lab_script() {
+    local script="$1"
+    shift
+
+    local path="$LAB/$script"
+
+    if [[ ! -f "$path" ]]; then
+        echo "ERROR: Lab script not found: $path" >&2
+        exit 1
+    fi
+
+    load_docker_helper
+
+    cd "$LAB"
+    bash "$path" "$@"
+}
+
+start() {
+    load_docker_helper
+    echo "Starting LoKey DNS lab..."
+    cd "$LAB"
+    docker compose up -d
+}
+
+stop() {
+    load_docker_helper
+    echo "Stopping LoKey DNS lab..."
+    cd "$LAB"
+    docker compose down
+}
+
+restart() {
+    stop
+    start
+}
+
+test_all() {
+    load_docker_helper
+    echo "Running LoKey tests..."
+    cd "$ROOT"
+    bash "$ROOT/tests/live_scenarios.sh"
+}
+
+run_scenario() {
+    local name="${1:-}"
+    shift || true
+
+    if [[ -z "$name" ]]; then
+        echo "ERROR: Missing scenario name." >&2
+        usage
+        exit 1
+    fi
+
+    local script="${SCENARIO_SCRIPTS[$name]:-}"
+
+    if [[ -z "$script" ]]; then
+        echo "ERROR: Unknown scenario: $name" >&2
+        usage
+        exit 1
+    fi
+
+    echo
+    echo "======================================"
+    echo " Running scenario: $name"
+    echo " Script: lab/$script"
+    echo "======================================"
+    echo
+
+    run_lab_script "$script" "$@"
+}
+
+case "${1:-}" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    test)
+        test_all
+        ;;
+    scenario)
+        shift
+        run_scenario "$@"
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

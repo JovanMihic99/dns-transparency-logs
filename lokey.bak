@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT/scripts/docker.sh"
+SCENARIOS="$ROOT/scenarios"
+
+
+# Docker command configuration
+DOCKER=(docker)
+
+# Docker Compose helpers
+lab() {
+    "${DOCKER[@]}" compose -f "$ROOT/lab/docker-compose.yml" "$@"
+}
+
+logs() {
+    "${DOCKER[@]}" compose -f "$ROOT/logs/docker-compose.yml" "$@"
+}
+
+collector() {
+    "${DOCKER[@]}" compose -f "$ROOT/collector/docker-compose.yml" "$@"
+}
+
+require_docker() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "ERROR: Docker is not installed."
+        exit 1
+    fi
+
+    # Prefer normal user permissions.
+    if docker info >/dev/null 2>&1; then
+        DOCKER=(docker)
+        return
+    fi
+
+    # Fall back to sudo if Docker requires elevated permissions.
+    echo "Docker requires elevated permissions. Requesting sudo..."
+
+    if ! sudo -v; then
+        echo "ERROR: Could not authenticate with sudo."
+        exit 1
+    fi
+
+    if sudo docker info >/dev/null 2>&1; then
+        DOCKER=(sudo docker)
+        echo "Using Docker through sudo."
+        return
+    fi
+
+    echo "ERROR: Docker daemon is unavailable."
+    exit 1
+}
+
+show_help() {
+    cat <<'HELP'
+LoKey - DNS Transparency Logs
+
+Usage:
+    ./lokey <command>
+
+Commands:
+    start                   Start the complete LoKey stack
+    stop                    Stop all LoKey services
+    restart                 Restart all LoKey services
+    test                    Run all unit tests
+
+    scenario <name>         Run a DNSSEC scenario
+
+    help                    Show this help message
+
+Available scenarios:
+    cds-rollover
+    double-ds-rollover
+    ksk-rollover
+    registrar
+    zsk-rollover
+
+Examples:
+    ./lokey start
+    ./lokey scenario cds-rollover
+    ./lokey scenario double-ds-rollover
+    ./lokey restart
+    ./lokey test
+    ./lokey stop
+HELP
+}
+
+# Start the complete stack
+start() {
+    require_docker
+
+    echo
+    echo "======================================"
+    echo " Starting LoKey"
+    echo "======================================"
+
+    # Prepare persistent data directories.
+    mkdir -p "$ROOT/collector/data"
+    mkdir -p "$ROOT/logs/data"
+
+    # Compose requires this file even when Telegram is disabled.
+    touch "$ROOT/logs/.env"
+
+    echo
+    echo "[1/3] Starting DNSSEC lab..."
+    lab up -d
+
+    echo
+    echo "[2/3] Starting logging API and dashboard..."
+    logs up -d --build
+
+    echo
+    echo "[3/3] Starting DNS collector..."
+    collector up -d --build
+
+    echo
+    echo "======================================"
+    echo " LoKey started successfully!"
+    echo "======================================"
+    echo
+    echo "Dashboard: http://127.0.0.1:5000"
+    echo
+    echo "Use './lokey stop' to stop everything."
+}
+
+# Stop services in reverse dependency order.
+stop() {
+    require_docker
+
+    echo
+    echo "======================================"
+    echo " Stopping LoKey"
+    echo "======================================"
+
+    echo
+    echo "[1/3] Stopping collector..."
+    collector stop
+
+    echo
+    echo "[2/3] Stopping logging API..."
+    logs stop
+
+    echo
+    echo "[3/3] Stopping DNSSEC lab..."
+    lab stop
+
+    echo
+    echo "LoKey stopped."
+    echo "Persistent data and Docker volumes have been preserved."
+}
+
+# Restart the complete stack.
+restart() {
+    echo "Restarting LoKey..."
+    stop
+    start
+}
+
+# Run unit tests.
+test() {
+    echo
+    echo "======================================"
+    echo " Running LoKey tests"
+    echo "======================================"
+
+    if ! command -v python >/dev/null 2>&1; then
+        echo "ERROR: Python not found. Activate your virtual environment."
+        exit 1
+    fi
+
+    echo
+    echo "[1/2] Collector and scoring tests..."
+    (
+        cd "$ROOT"
+        python -m pytest -q tests/
+    )
+
+    echo
+    echo "[2/2] Logging application tests..."
+    (
+        cd "$ROOT/logs"
+        python -m pytest -q tests/
+    )
+
+    echo
+    echo "======================================"
+    echo " All tests passed!"
+    echo "======================================"
+}
+
+# Run a scenario by its directory name.
+scenario() {
+    local name="${1:-}"
+
+    if [[ -z "$name" ]]; then
+        echo "ERROR: Missing scenario name."
+        echo "Usage: ./lokey scenario <name>"
+        exit 1
+    fi
+
+    local directory="$SCENARIOS/$name"
+
+    if [[ ! -d "$directory" ]]; then
+        echo "ERROR: Unknown scenario '$name'."
+        echo
+        echo "Available scenarios:"
+
+        for dir in "$SCENARIOS"/*/; do
+            [[ -d "$dir" ]] && echo "  - $(basename "$dir")"
+        done
+
+        exit 1
+    fi
+
+    local runner
+
+    # Some rollover.sh files are Docker-side tools, not host-side
+    # scenario drivers. Those scenarios use their lab test scripts.
+    case "$name" in
+        cds-rollover)
+            runner="$directory/rollover.sh"
+            ;;
+        double-ds-rollover)
+            runner="$directory/rollover.sh"
+            ;;
+        ksk-rollover)
+            runner="$ROOT/lab/test-ksk-rollover.sh"
+            ;;
+        registrar)
+            runner="$ROOT/lab/test-registrar-hijack.sh"
+            ;;
+        zsk-rollover)
+            runner="$ROOT/lab/test-zsk-rollover.sh"
+            ;;
+        *)
+            echo "ERROR: Scenario directory exists, but no runner is configured."
+            exit 1
+            ;;
+    esac
+
+    if [[ ! -f "$runner" ]]; then
+        echo "ERROR: Scenario runner not found: $runner"
+        exit 1
+    fi
+
+    require_docker
+
+    echo
+    echo "======================================"
+    echo " Running scenario: $name"
+    echo "======================================"
+    echo
+
+    bash "$runner" "${@:2}"
+
+    echo
+    echo "======================================"
+    echo " Scenario '$name' completed."
+    echo "======================================"
+}
+
+# Main command dispatcher.
+command="${1:-help}"
+shift || true
+
+case "$command" in
+    start)
+        start "$@"
+        ;;
+    stop)
+        stop "$@"
+        ;;
+    restart)
+        restart "$@"
+        ;;
+    test)
+        test "$@"
+        ;;
+    scenario)
+        scenario "$@"
+        ;;
+    help|-h|--help)
+        show_help
+        ;;
+    *)
+        echo "ERROR: Unknown command '$command'."
+        echo
+        show_help
+        exit 1
+        ;;
+esac
